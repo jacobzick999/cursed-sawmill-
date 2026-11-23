@@ -344,177 +344,104 @@ for _, item in ipairs(moveButtons) do
 end
 
 
--- LOCAL-ONLY item attraction: gifts and clearly dropped tree/log objects.
-makeLabel(scroll, "ITEM DISTRACTION (LOCAL PREVIEW)", UDim2.fromOffset(16, 466), UDim2.fromOffset(278, 22), 11, COLORS.accent, true)
-local giftToggle = makeButton(scroll, "PULL GIFTS: OFF", UDim2.fromOffset(16, 492), UDim2.fromOffset(132, 34))
-local treeToggle = makeButton(scroll, "PULL DROPPED TREES: OFF", UDim2.fromOffset(162, 492), UDim2.fromOffset(132, 34))
-local radiusLabel = makeLabel(scroll, "Pull radius (studs)", UDim2.fromOffset(16, 535), UDim2.fromOffset(170, 24), 11, COLORS.text, true)
-local radiusBox = Instance.new("TextBox")
-radiusBox.Position = UDim2.fromOffset(206, 532)
-radiusBox.Size = UDim2.fromOffset(88, 30)
-radiusBox.BackgroundColor3 = COLORS.panel
-radiusBox.BorderSizePixel = 0
-radiusBox.TextColor3 = COLORS.text
-radiusBox.Font = Enum.Font.GothamBold
-radiusBox.TextSize = 14
-radiusBox.Text = "35"
-radiusBox.ClearTextOnFocus = false
-radiusBox.Parent = scroll
-Instance.new("UICorner", radiusBox).CornerRadius = UDim.new(0, 6)
-local stopPullButton = makeButton(scroll, "STOP ITEM PULL", UDim2.fromOffset(16, 572), UDim2.fromOffset(278, 32), Color3.fromRGB(120, 55, 68))
-local pullStatus = makeLabel(scroll, "Attraction affects only locally movable objects.", UDim2.fromOffset(16, 608), UDim2.fromOffset(278, 28), 9, COLORS.muted, false)
-pullStatus.TextWrapped = true
+-- LOCAL-ONLY tornado visual effect around the player's character.
+makeLabel(scroll, "TORNADO DISTRACTION (VISUAL)", UDim2.fromOffset(16, 466), UDim2.fromOffset(278, 22), 11, COLORS.accent, true)
+local tornadoButton = makeButton(scroll, "START TORNADO", UDim2.fromOffset(16, 492), UDim2.fromOffset(278, 36), COLORS.accent)
+local tornadoStatus = makeLabel(scroll, "Creates a local swirling effect around your character.", UDim2.fromOffset(16, 534), UDim2.fromOffset(278, 34), 9, COLORS.muted, false)
+tornadoStatus.TextWrapped = true
 
-local pullGifts = false
-local pullTrees = false
-local pullConnection = nil
-local scanClock = 0
-local pullTargets = {}
-local originalPositions = {}
+local tornadoActive = false
+local tornadoConnection = nil
+local tornadoParts = {}
+local tornadoClock = 0
+local tornadoPartCount = 16
 
-local function isCharacterObject(object)
-    for _, otherPlayer in ipairs(Players:GetPlayers()) do
-        local character = otherPlayer.Character
-        if character and (object == character or object:IsDescendantOf(character)) then
-            return true
-        end
+local function clearTornado()
+    if tornadoConnection then
+        tornadoConnection:Disconnect()
+        tornadoConnection = nil
     end
-    return false
+    for _, part in ipairs(tornadoParts) do
+        if part and part.Parent then part:Destroy() end
+    end
+    table.clear(tornadoParts)
+    tornadoClock = 0
 end
 
-local function getPullRoot(object)
-    local current = object
-    while current and current.Parent ~= workspace do
-        if current:IsA("Model") then
-            return current
-        end
-        current = current.Parent
-    end
-    if object:IsA("Model") or object:IsA("BasePart") then
-        return object
-    end
-    return nil
+local function stopTornado()
+    tornadoActive = false
+    clearTornado()
+    tornadoButton.Text = "START TORNADO"
+    tornadoStatus.Text = "Tornado effect stopped."
 end
 
-local function isPullCandidate(object)
-    if not (object:IsA("Model") or object:IsA("BasePart")) then return false end
-    if isCharacterObject(object) then return false end
-    local name = string.lower(object.Name)
-    local isGift = string.find(name, "gift", 1, true) ~= nil
-    local hasDroppedFlag = object:GetAttribute("Dropped") == true
-    local looksLikeDroppedTree = string.find(name, "dropped", 1, true) ~= nil
-        or string.find(name, "log", 1, true) ~= nil
-        or string.find(name, "wood", 1, true) ~= nil
-        or hasDroppedFlag
-    local isTree = string.find(name, "tree", 1, true) ~= nil and looksLikeDroppedTree
-    return (pullGifts and isGift) or (pullTrees and (isTree or looksLikeDroppedTree))
-end
-
-local function getObjectPosition(object)
-    if object:IsA("Model") then
-        return object:GetPivot().Position
-    end
-    return object.Position
-end
-
-local function moveObjectToward(object, targetPosition, alpha)
-    if object:IsA("Model") then
-        local pivot = object:GetPivot()
-        local nextPosition = pivot.Position:Lerp(targetPosition, alpha)
-        object:PivotTo(CFrame.new(nextPosition) * (pivot - pivot.Position))
-    elseif object:IsA("BasePart") then
-        object.CFrame = object.CFrame:Lerp(CFrame.new(targetPosition) * (object.CFrame - object.Position), alpha)
-    end
-end
-
-local function restorePullTargets()
-    for object, original in pairs(originalPositions) do
-        if object and object.Parent then
-            pcall(function()
-                if object:IsA("Model") then
-                    object:PivotTo(original)
-                elseif object:IsA("BasePart") then
-                    object.CFrame = original
-                end
-            end)
-        end
-    end
-    table.clear(originalPositions)
-    table.clear(pullTargets)
-end
-
-local function stopItemPull()
-    pullGifts = false
-    pullTrees = false
-    giftToggle.Text = "PULL GIFTS: OFF"
-    treeToggle.Text = "PULL DROPPED TREES: OFF"
-    if pullConnection then
-        pullConnection:Disconnect()
-        pullConnection = nil
-    end
-    restorePullTargets()
-    pullStatus.Text = "Item pull stopped. Local preview positions restored."
-end
-
-local function startItemPull()
-    if pullConnection then pullConnection:Disconnect() pullConnection = nil end
-    if not pullGifts and not pullTrees then
-        pullStatus.Text = "Turn on Gifts or Dropped Trees first."
+local function startTornado()
+    clearTornado()
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root then
+        tornadoStatus.Text = "Your character is not ready. Try again."
         return
     end
-    pullStatus.Text = "Searching nearby gifts and dropped tree items..."
-    scanClock = 0
-    pullConnection = RunService.Heartbeat:Connect(function(deltaTime)
-        local character = player.Character
-        local root = character and character:FindFirstChild("HumanoidRootPart")
-        if not root then return end
-        scanClock = scanClock + deltaTime
-        if scanClock >= 0.6 then
-            scanClock = 0
-            table.clear(pullTargets)
-            local radius = tonumber(radiusBox.Text) or 35
-            radius = math.clamp(radius, 5, 250)
-            for _, object in ipairs(workspace:GetDescendants()) do
-                if isPullCandidate(object) then
-                    local candidate = getPullRoot(object)
-                    if candidate and not pullTargets[candidate] then
-                        local ok, position = pcall(getObjectPosition, candidate)
-                        if ok and (position - root.Position).Magnitude <= radius then
-                            pullTargets[candidate] = true
-                            if not originalPositions[candidate] then
-                                originalPositions[candidate] = candidate:IsA("Model") and candidate:GetPivot() or candidate.CFrame
-                            end
-                        end
-                    end
-                end
-            end
+
+    tornadoActive = true
+    tornadoButton.Text = "STOP TORNADO"
+    tornadoStatus.Text = "Tornado swirling around your character (local visual only)."
+
+    for i = 1, tornadoPartCount do
+        local orb = Instance.new("Part")
+        orb.Name = "DarkSideTornadoParticle"
+        orb.Shape = Enum.PartType.Ball
+        orb.Size = Vector3.new(0.8, 0.8, 0.8)
+        orb.Material = Enum.Material.Neon
+        orb.Color = i % 2 == 0 and COLORS.accent or Color3.fromRGB(92, 190, 255)
+        orb.Transparency = 0.12
+        orb.Anchored = true
+        orb.CanCollide = false
+        orb.CanTouch = false
+        orb.CanQuery = false
+        orb.CastShadow = false
+        orb.Parent = workspace
+        table.insert(tornadoParts, orb)
+    end
+
+    tornadoConnection = RunService.Heartbeat:Connect(function(deltaTime)
+        local currentCharacter = player.Character
+        local currentRoot = currentCharacter and currentCharacter:FindFirstChild("HumanoidRootPart")
+        if not currentRoot then
+            stopTornado()
+            return
         end
-        for object in pairs(pullTargets) do
-            if object and object.Parent then
-                pcall(function()
-                    local position = getObjectPosition(object)
-                    local offset = root.Position - position
-                    if offset.Magnitude > 4 then
-                        local step = math.min(0.12, deltaTime * 2.5)
-                        moveObjectToward(object, root.Position - offset.Unit * 3.5, step)
-                    end
-                end)
+
+        tornadoClock = tornadoClock + deltaTime
+        local center = currentRoot.Position
+        for i, orb in ipairs(tornadoParts) do
+            if orb and orb.Parent then
+                local fraction = (i - 1) / tornadoPartCount
+                local angle = tornadoClock * 3.2 + fraction * math.pi * 2
+                local height = 1 + fraction * 10
+                local radius = 1.2 + fraction * 2.6
+                local wobble = math.sin(tornadoClock * 4 + i) * 0.25
+                local position = center + Vector3.new(
+                    math.cos(angle) * (radius + wobble),
+                    height,
+                    math.sin(angle) * (radius + wobble)
+                )
+                orb.CFrame = CFrame.new(position)
+                local size = 0.45 + fraction * 0.65
+                orb.Size = Vector3.new(size, size, size)
             end
         end
     end)
 end
 
-giftToggle.Activated:Connect(function()
-    pullGifts = not pullGifts
-    giftToggle.Text = pullGifts and "PULL GIFTS: ON" or "PULL GIFTS: OFF"
-    if pullGifts or pullTrees then startItemPull() else stopItemPull() end
+tornadoButton.Activated:Connect(function()
+    if tornadoActive then
+        stopTornado()
+    else
+        startTornado()
+    end
 end)
-treeToggle.Activated:Connect(function()
-    pullTrees = not pullTrees
-    treeToggle.Text = pullTrees and "PULL TREES: ON" or "PULL DROPPED TREES: OFF"
-    if pullGifts or pullTrees then startItemPull() else stopItemPull() end
-end)
-stopPullButton.Activated:Connect(stopItemPull)
 
 -- Slightly taller panel; responsive scaling keeps all touch targets visible.
 frame.Size = UDim2.fromOffset(310, 390)
@@ -545,4 +472,5 @@ gui.Destroying:Connect(function()
     inputConnection:Disconnect()
     if cameraConnection then cameraConnection:Disconnect() end
     highlight:Destroy()
+    clearTornado()
 end)
