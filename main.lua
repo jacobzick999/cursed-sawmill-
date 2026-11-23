@@ -356,8 +356,8 @@ local tornadoParts = {}
 local tornadoClock = 0
 local tornadoPartCount = 16
 local suctionClock = 0
-local SUCTION_RADIUS = 28
-local MAX_SUCTION_ASSEMBLIES = 28
+local SUCTION_RADIUS = 45
+local MAX_SUCTION_ASSEMBLIES = 60
 
 local function clearTornado()
     if tornadoConnection then
@@ -416,7 +416,7 @@ local function pullLooseObjects(center)
         end
     end
     overlap.FilterDescendantsInstances = excluded
-    overlap.MaxParts = 180
+    overlap.MaxParts = 350
 
     local nearbyParts = workspace:GetPartBoundsInRadius(center, SUCTION_RADIUS, overlap)
     local handled = {}
@@ -444,10 +444,10 @@ local function pullLooseObjects(center)
                     if mass > 0 and mass < 100000 then
                         local distanceFactor = 0.65 + 0.35 * (1 - distance / SUCTION_RADIUS)
                         local impulse = (
-                            inward * 22
-                            + tangent * 18
-                            + Vector3.new(0, 30, 0)
-                        ) * mass * 0.16 * distanceFactor
+                            inward * 85
+                            + tangent * 65
+                            + Vector3.new(0, 110, 0)
+                        ) * mass * 0.32 * distanceFactor
 
                         pcall(function()
                             assembly:ApplyImpulse(impulse)
@@ -471,7 +471,7 @@ local function startTornado()
 
     tornadoActive = true
     tornadoButton.Text = "STOP TORNADO"
-    tornadoStatus.Text = "Tornado suction ON: loose collidable objects spiral upward nearby."
+    tornadoStatus.Text = "Tornado suction MAX: stronger pull, wider radius, and upward spiral for loose collidable objects."
 
     for i = 1, tornadoPartCount do
         local orb = Instance.new("Part")
@@ -521,7 +521,7 @@ local function startTornado()
         end
 
         -- Scan and apply suction several times per second instead of every frame.
-        if suctionClock >= 0.16 then
+        if suctionClock >= 0.08 then
             suctionClock = 0
             pullLooseObjects(center)
         end
