@@ -401,17 +401,12 @@ local flingActive = false
 local flingConnection = nil
 local flingClock = 0
 local flingCooldowns = {}
-local FLING_RADIUS = 32
-local MAX_ASSEMBLIES_PER_PULSE = 24
+local FLING_RADIUS = 80
+local MAX_ASSEMBLIES_PER_PULSE = 60
 
 local function isCharacterPart(part)
     local model = part:FindFirstAncestorOfClass("Model")
     return model and model:FindFirstChildOfClass("Humanoid") ~= nil
-end
-
-local function isProtectedStructure(part)
-    local folder = workspace:FindFirstChild("PlayerModels")
-    return folder ~= nil and part:IsDescendantOf(folder)
 end
 
 local function stopFling()
@@ -436,12 +431,12 @@ local function startFling()
     flingClock = 0
     table.clear(flingCooldowns)
     flingButton.Text = "STOP OBJECT FLING"
-    flingStatus.Text = "Searching within 32 studs for loose objects..."
+    flingStatus.Text = "Searching within 80 studs for loose, unanchored objects..."
 
     local overlap = OverlapParams.new()
     overlap.FilterType = Enum.RaycastFilterType.Exclude
     overlap.FilterDescendantsInstances = {character}
-    overlap.MaxParts = 500
+    overlap.MaxParts = 2000
 
     flingConnection = RunService.Heartbeat:Connect(function(dt)
         if not flingActive then return end
@@ -474,7 +469,7 @@ local function startFling()
         for _, part in ipairs(nearby) do
             if affected >= MAX_ASSEMBLIES_PER_PULSE then break end
             if part:IsA("BasePart") and not part.Anchored
-                and not isCharacterPart(part) and not isProtectedStructure(part) then
+                and not isCharacterPart(part) then
                 local assembly = part.AssemblyRootPart or part
                 if assembly and not assembly.Anchored and not seen[assembly]
                     and (not flingCooldowns[assembly] or now - flingCooldowns[assembly] >= 0.65) then
@@ -507,7 +502,7 @@ local function startFling()
 
         flingStatus.Text = affected > 0
             and ("Applied local fling to " .. affected .. " loose object(s).")
-            or "No movable loose objects found nearby. Server ownership may block this."
+            or "No unanchored non-character objects detected within 80 studs. Items may be anchored or server-controlled."
     end)
 end
 
