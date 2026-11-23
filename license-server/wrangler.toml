@@ -5,5 +5,5 @@ compatibility_date = "2026-11-23"
 [[d1_databases]]
 binding = "DB"
 database_name = "cursed-sawmill-licenses"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_id = "e0be596c80969b19d0eb6d899e0f5729"
 migrations_dir = "."
