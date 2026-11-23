@@ -433,7 +433,70 @@ local diagnoseButton = makeButton(scroll, "DIAGNOSE NEARBY OBJECTS", UDim2.fromO
 local diagnoseResults = makeLabel(scroll, "Diagnostic report will appear here.", UDim2.fromOffset(16, 592), UDim2.fromOffset(278, 118), 9, COLORS.muted, false)
 diagnoseResults.TextWrapped = true
 diagnoseResults.TextYAlignment = Enum.TextYAlignment.Top
-scroll.CanvasSize = UDim2.fromOffset(0, 780)
+
+-- Joint scanner: capture nearby parts before a normal chop, then compare after.
+-- This only observes client-visible Workspace instances; it does not interact with them.
+local jointScanButton = makeButton(scroll, "CAPTURE JOINT BASELINE", UDim2.fromOffset(14, 714), UDim2.fromOffset(282, 34), COLORS.accent)
+local jointScanStatus = makeLabel(scroll, "JOINT SCANNER  •  Take a baseline before chopping.", UDim2.fromOffset(16, 752), UDim2.fromOffset(278, 38), 9, COLORS.muted, false)
+jointScanStatus.TextWrapped = true
+local jointBaseline = nil
+local function captureNearbyParts(root)
+    local snapshot = {}
+    for _, object in ipairs(workspace:GetDescendants()) do
+        if object:IsA("BasePart") and not (player.Character and object:IsDescendantOf(player.Character)) then
+            if (object.Position - root.Position).Magnitude <= 120 then
+                snapshot[object] = true
+            end
+        end
+    end
+    return snapshot
+end
+
+jointScanButton.Activated:Connect(function()
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root then
+        jointScanStatus.Text = "No character root found. Respawn and try again."
+        return
+    end
+
+    if not jointBaseline then
+        jointBaseline = captureNearbyParts(root)
+        jointScanButton.Text = "COMPARE AFTER ONE CHOP"
+        jointScanStatus.Text = "Baseline saved. Chop one joint normally, then tap Compare."
+        return
+    end
+
+    local after = captureNearbyParts(root)
+    local added, removed = {}, 0
+    for object in pairs(after) do
+        if not jointBaseline[object] then
+            local path = object:GetFullName()
+            table.insert(added, object.Name .. "  [" .. path .. "]")
+        end
+    end
+    for object in pairs(jointBaseline) do
+        if not after[object] then removed += 1 end
+    end
+
+    table.sort(added)
+    local shown = {}
+    for index = 1, math.min(#added, 8) do
+        table.insert(shown, "+ " .. added[index])
+    end
+    if #added > 8 then
+        table.insert(shown, "...and " .. (#added - 8) .. " more new parts")
+    end
+    if #shown == 0 then
+        table.insert(shown, "No new nearby parts detected.")
+    end
+    jointScanStatus.Text = "Added: " .. #added .. "  •  Removed: " .. removed ..
+        "\\n" .. table.concat(shown, "\\n") ..
+        "\\nTap again to take a fresh baseline."
+    jointBaseline = nil
+    jointScanButton.Text = "CAPTURE JOINT BASELINE"
+end)
+scroll.CanvasSize = UDim2.fromOffset(0, 1080)
 
 local autoTreeRunning = false
 local currentTreeTarget = nil
