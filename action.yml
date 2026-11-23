@@ -32,5 +32,4 @@ runs:
       env:
         ROBLOX_CHECK_PATH: ${{ inputs.path }}
         ROBLOX_FAIL_ON_WARNING: ${{ inputs.fail-on-warning }}
-        GITHUB_OUTPUT: ${{ github.output }}
       run: python3 "${{ github.action_path }}/scripts/check_project.py"
