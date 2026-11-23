@@ -357,8 +357,8 @@ local tornadoRings = {}
 local tornadoClock = 0
 local tornadoPartCount = 48
 local suctionClock = 0
-local SUCTION_RADIUS = 45
-local MAX_SUCTION_ASSEMBLIES = 60
+local SUCTION_RADIUS = 80
+local MAX_SUCTION_ASSEMBLIES = 100
 
 local function clearTornado()
     if tornadoConnection then
@@ -421,7 +421,7 @@ local function pullLooseObjects(center)
         end
     end
     overlap.FilterDescendantsInstances = excluded
-    overlap.MaxParts = 350
+    overlap.MaxParts = 1000
 
     local nearbyParts = workspace:GetPartBoundsInRadius(center, SUCTION_RADIUS, overlap)
     local handled = {}
@@ -430,7 +430,7 @@ local function pullLooseObjects(center)
     for _, part in ipairs(nearbyParts) do
         if processed >= MAX_SUCTION_ASSEMBLIES then break end
         if part:IsA("BasePart") and part.Parent and not part.Anchored
-            and part.CanCollide and not isInsideCharacter(part) and not isStructurePart(part) then
+            and not isInsideCharacter(part) and not isStructurePart(part) then
 
             local assembly = part.AssemblyRootPart or part
             if assembly and assembly.Parent and not assembly.Anchored and not handled[assembly] then
@@ -449,10 +449,10 @@ local function pullLooseObjects(center)
                     if mass > 0 and mass < 100000 then
                         local distanceFactor = 0.65 + 0.35 * (1 - distance / SUCTION_RADIUS)
                         local impulse = (
-                            inward * 85
-                            + tangent * 65
-                            + Vector3.new(0, 110, 0)
-                        ) * mass * 0.32 * distanceFactor
+                            inward * 120
+                            + tangent * 95
+                            + Vector3.new(0, 155, 0)
+                        ) * mass * 0.38 * distanceFactor
 
                         pcall(function()
                             assembly:ApplyImpulse(impulse)
@@ -476,7 +476,7 @@ local function startTornado()
 
     tornadoActive = true
     tornadoButton.Text = "STOP TORNADO"
-    tornadoStatus.Text = "ULTIMATE VORTEX: 48 particles, triple spinning rings, and a towering spiral."
+    tornadoStatus.Text = "MEGA VORTEX: pulls loose collidable and non-collidable objects within 80 studs; anchored parts and characters are excluded."
 
     -- Three horizontal neon rings create a layered, expanding vortex base.
     for ringIndex = 1, 3 do
@@ -553,7 +553,7 @@ local function startTornado()
             end
         end
 
-        -- Scan and apply suction several times per second instead of every frame.
+        -- Scan nearby loose objects several times per second; collision properties are not modified.
         if suctionClock >= 0.08 then
             suctionClock = 0
             pullLooseObjects(center)
