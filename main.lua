@@ -82,6 +82,20 @@ makeLabel(frame, "STRUCTURE ROTATION • MOBILE", UDim2.fromOffset(16, 34), UDim
 local dragButton = makeButton(frame, "MOVE", UDim2.new(1, -112, 0, 12), UDim2.fromOffset(56, 30), COLORS.accent)
 local closeButton = makeButton(frame, "X", UDim2.new(1, -48, 0, 12), UDim2.fromOffset(34, 30))
 
+local scroll = Instance.new("ScrollingFrame")
+scroll.Name = "ControlsScroll"
+scroll.Position = UDim2.fromOffset(0, 54)
+scroll.Size = UDim2.new(1, 0, 1, -62)
+scroll.BackgroundTransparency = 1
+scroll.BorderSizePixel = 0
+scroll.ScrollBarThickness = 6
+scroll.ScrollBarImageColor3 = COLORS.accent
+scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+scroll.CanvasSize = UDim2.fromOffset(0, 530)
+scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
+scroll.ElasticBehavior = Enum.ElasticBehavior.WhenScrollable
+scroll.Parent = frame
+
 -- Drag the panel using the MOVE handle (works with touch on Android).
 local dragging = false
 local dragTouch = nil
@@ -122,15 +136,15 @@ UserInputService.InputEnded:Connect(function(input)
         dragTouch = nil
     end
 end)
-local selectButton = makeButton(frame, "SELECT STRUCTURE", UDim2.fromOffset(14, 64), UDim2.fromOffset(282, 36), COLORS.accent)
+local selectButton = makeButton(scroll, "SELECT STRUCTURE", UDim2.fromOffset(14, 10), UDim2.fromOffset(282, 36), COLORS.accent)
 
-local selectedLabel = makeLabel(frame, "Target: none", UDim2.fromOffset(16, 108), UDim2.fromOffset(278, 24), 12, COLORS.text, true)
-local statusLabel = makeLabel(frame, "Tap Select, then tap a placed structure.", UDim2.fromOffset(16, 132), UDim2.fromOffset(278, 34), 10, COLORS.muted, false)
+local selectedLabel = makeLabel(scroll, "Target: none", UDim2.fromOffset(16, 54), UDim2.fromOffset(278, 24), 12, COLORS.text, true)
+local statusLabel = makeLabel(scroll, "Tap Select, then tap a placed structure.", UDim2.fromOffset(16, 78), UDim2.fromOffset(278, 34), 10, COLORS.muted, false)
 statusLabel.TextWrapped = true
 
-makeLabel(frame, "Rotation step (degrees)", UDim2.fromOffset(16, 174), UDim2.fromOffset(170, 24), 12, COLORS.text, true)
+makeLabel(scroll, "Rotation step (degrees)", UDim2.fromOffset(16, 120), UDim2.fromOffset(170, 24), 12, COLORS.text, true)
 local rotationBox = Instance.new("TextBox")
-rotationBox.Position = UDim2.fromOffset(206, 170)
+rotationBox.Position = UDim2.fromOffset(206, 116)
 rotationBox.Size = UDim2.fromOffset(88, 30)
 rotationBox.BackgroundColor3 = COLORS.panel
 rotationBox.BorderSizePixel = 0
@@ -139,12 +153,12 @@ rotationBox.Font = Enum.Font.GothamBold
 rotationBox.TextSize = 14
 rotationBox.Text = "15"
 rotationBox.ClearTextOnFocus = false
-rotationBox.Parent = frame
+rotationBox.Parent = scroll
 Instance.new("UICorner", rotationBox).CornerRadius = UDim.new(0, 6)
 
-makeLabel(frame, "Move step (studs)", UDim2.fromOffset(16, 214), UDim2.fromOffset(170, 24), 12, COLORS.text, true)
+makeLabel(scroll, "Move step (studs)", UDim2.fromOffset(16, 160), UDim2.fromOffset(170, 24), 12, COLORS.text, true)
 local moveBox = Instance.new("TextBox")
-moveBox.Position = UDim2.fromOffset(206, 210)
+moveBox.Position = UDim2.fromOffset(206, 156)
 moveBox.Size = UDim2.fromOffset(88, 30)
 moveBox.BackgroundColor3 = COLORS.panel
 moveBox.BorderSizePixel = 0
@@ -153,10 +167,10 @@ moveBox.Font = Enum.Font.GothamBold
 moveBox.TextSize = 14
 moveBox.Text = "1"
 moveBox.ClearTextOnFocus = false
-moveBox.Parent = frame
+moveBox.Parent = scroll
 Instance.new("UICorner", moveBox).CornerRadius = UDim.new(0, 6)
 
-makeLabel(frame, "ROTATE", UDim2.fromOffset(16, 252), UDim2.fromOffset(100, 20), 10, COLORS.muted, true)
+makeLabel(scroll, "ROTATE", UDim2.fromOffset(16, 198), UDim2.fromOffset(100, 20), 10, COLORS.muted, true)
 local axisColors = {
     X = Color3.fromRGB(232, 111, 120),
     Y = Color3.fromRGB(112, 202, 157),
@@ -308,34 +322,34 @@ local function move(direction)
 end
 
 for index, axis in ipairs({"X", "Y", "Z"}) do
-    local y = 274 + (index - 1) * 40
-    local label = makeLabel(frame, axis, UDim2.fromOffset(18, y), UDim2.fromOffset(30, 32), 15, axisColors[axis], true)
-    local minus = makeButton(frame, "−", UDim2.fromOffset(70, y), UDim2.fromOffset(100, 32))
-    local plus = makeButton(frame, "+", UDim2.fromOffset(178, y), UDim2.fromOffset(116, 32))
+    local y = 220 + (index - 1) * 40
+    local label = makeLabel(scroll, axis, UDim2.fromOffset(18, y), UDim2.fromOffset(30, 32), 15, axisColors[axis], true)
+    local minus = makeButton(scroll, "−", UDim2.fromOffset(70, y), UDim2.fromOffset(100, 32))
+    local plus = makeButton(scroll, "+", UDim2.fromOffset(178, y), UDim2.fromOffset(116, 32))
     minus.Activated:Connect(function() rotate(axis, -1) end)
     plus.Activated:Connect(function() rotate(axis, 1) end)
 end
 
 local moveButtons = {
-    {"LEFT", 16, 404}, {"RIGHT", 162, 404},
-    {"FORWARD", 16, 440}, {"BACK", 162, 440},
-    {"UP", 16, 476}, {"DOWN", 162, 476},
+    {"LEFT", 16, 350}, {"RIGHT", 162, 350},
+    {"FORWARD", 16, 386}, {"BACK", 162, 386},
+    {"UP", 16, 422}, {"DOWN", 162, 422},
 }
 -- Keep the panel within a mobile viewport by making the bottom controls scroll-free
 -- and scaling the complete panel to fit the available screen height.
 for _, item in ipairs(moveButtons) do
-    local button = makeButton(frame, item[1], UDim2.fromOffset(item[2], item[3]), UDim2.fromOffset(132, 30))
+    local button = makeButton(scroll, item[1], UDim2.fromOffset(item[2], item[3]), UDim2.fromOffset(132, 30))
     button.Activated:Connect(function() move(item[1]) end)
 end
 
 -- Slightly taller panel; responsive scaling keeps all touch targets visible.
-frame.Size = UDim2.fromOffset(310, 516)
+frame.Size = UDim2.fromOffset(310, 390)
 local function updateScale()
     local camera = workspace.CurrentCamera
     if not camera then return end
     local viewport = camera.ViewportSize
-    scale.Scale = math.min(1, (viewport.X - 20) / 310, (viewport.Y - 24) / 516)
-    frame.Position = UDim2.new(0, 10, 0.5, -258 * scale.Scale)
+    scale.Scale = math.min(1, (viewport.X - 20) / 310, (viewport.Y - 24) / 390)
+    frame.Position = UDim2.new(0, 10, 0.5, -195 * scale.Scale)
 end
 updateScale()
 local cameraConnection
