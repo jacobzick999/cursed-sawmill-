@@ -436,8 +436,8 @@ diagnoseResults.TextYAlignment = Enum.TextYAlignment.Top
 
 -- Joint scanner: capture nearby parts before a normal chop, then compare after.
 -- This only observes client-visible Workspace instances; it does not interact with them.
-local jointScanButton = makeButton(scroll, "CAPTURE JOINT BASELINE", UDim2.fromOffset(14, 714), UDim2.fromOffset(282, 34), COLORS.accent)
-local jointScanStatus = makeLabel(scroll, "JOINT SCANNER  •  Take a baseline before chopping.", UDim2.fromOffset(16, 752), UDim2.fromOffset(278, 38), 9, COLORS.muted, false)
+local jointScanButton = makeButton(scroll, "CAPTURE JOINT BASELINE", UDim2.fromOffset(14, 1026), UDim2.fromOffset(282, 34), COLORS.accent)
+local jointScanStatus = makeLabel(scroll, "JOINT SCANNER  •  Take a baseline before chopping.", UDim2.fromOffset(16, 1064), UDim2.fromOffset(278, 64), 9, COLORS.muted, false)
 jointScanStatus.TextWrapped = true
 local jointBaseline = nil
 local function captureNearbyParts(root)
@@ -496,7 +496,7 @@ jointScanButton.Activated:Connect(function()
     jointBaseline = nil
     jointScanButton.Text = "CAPTURE JOINT BASELINE"
 end)
-scroll.CanvasSize = UDim2.fromOffset(0, 1080)
+scroll.CanvasSize = UDim2.fromOffset(0, 1140)
 
 local autoTreeRunning = false
 local currentTreeTarget = nil
