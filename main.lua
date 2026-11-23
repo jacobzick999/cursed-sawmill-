@@ -446,7 +446,8 @@ treeHighlight.Enabled = false
 treeHighlight.Parent = workspace
 
 local TREE_NAME_HINTS = {
-    "tree", "oak", "elm", "walnut", "cherry", "fir", "pine", "birch",
+    -- The game calls the main wood part "Trunk", so check that explicitly.
+    "trunk", "tree", "oak", "elm", "walnut", "cherry", "fir", "pine", "birch",
     "palm", "lava", "spook", "sinister", "frost", "snow", "koa",
     "volcano", "cedar", "spruce", "acacia", "phantom", "golden"
 }
@@ -557,7 +558,7 @@ diagnoseButton.Activated:Connect(function()
     end
 
     diagnoseResults.Text = "Within 120 studs: " .. modelCount .. " models, " .. partCount ..
-        " parts. Nearby names:\\n" .. (#rows > 0 and table.concat(rows, "\\n") or "No nearby objects found.")
+        " parts. Nearby names:\n" .. (#rows > 0 and table.concat(rows, "\n") or "No nearby objects found.")
     treeStatus.Text = "Diagnostic scan complete. Share the names shown below."
 end)
 
