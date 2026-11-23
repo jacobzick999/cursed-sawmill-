@@ -428,6 +428,11 @@ local autoTreeButton = makeButton(scroll, "START AUTO TREE ASSIST", UDim2.fromOf
 local treeStatus = makeLabel(scroll, "OFF  •  Ready to scan for nearby tree types.", UDim2.fromOffset(16, 504), UDim2.fromOffset(278, 42), 10, COLORS.muted, false)
 treeStatus.TextWrapped = true
 treeStatus.TextYAlignment = Enum.TextYAlignment.Top
+
+local diagnoseButton = makeButton(scroll, "DIAGNOSE NEARBY OBJECTS", UDim2.fromOffset(14, 552), UDim2.fromOffset(282, 34))
+local diagnoseResults = makeLabel(scroll, "Diagnostic report will appear here.", UDim2.fromOffset(16, 592), UDim2.fromOffset(278, 118), 9, COLORS.muted, false)
+diagnoseResults.TextWrapped = true
+diagnoseResults.TextYAlignment = Enum.TextYAlignment.Top
 scroll.CanvasSize = UDim2.fromOffset(0, 780)
 
 local autoTreeRunning = false
@@ -520,6 +525,41 @@ local function findNearestTree()
     end
     return best, bestDistance, scanned
 end
+
+diagnoseButton.Activated:Connect(function()
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root then
+        diagnoseResults.Text = "No HumanoidRootPart found. Respawn and try again."
+        return
+    end
+
+    local rows = {}
+    local modelCount, partCount = 0, 0
+    for _, object in ipairs(workspace:GetDescendants()) do
+        if object:IsA("Model") then
+            local ok, position = pcall(function() return object:GetPivot().Position end)
+            if ok and (position - root.Position).Magnitude <= 120 then
+                modelCount += 1
+                if #rows < 12 then
+                    table.insert(rows, "MODEL: " .. object.Name)
+                end
+            end
+        elseif object:IsA("BasePart") then
+            local distance = (object.Position - root.Position).Magnitude
+            if distance <= 120 then
+                partCount += 1
+                if #rows < 20 then
+                    table.insert(rows, "PART: " .. object.Name)
+                end
+            end
+        end
+    end
+
+    diagnoseResults.Text = "Within 120 studs: " .. modelCount .. " models, " .. partCount ..
+        " parts. Nearby names:\\n" .. (#rows > 0 and table.concat(rows, "\\n") or "No nearby objects found.")
+    treeStatus.Text = "Diagnostic scan complete. Share the names shown below."
+end)
 
 local function stopTreeAssist()
     autoTreeRunning = false
