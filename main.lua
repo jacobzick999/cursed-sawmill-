@@ -92,7 +92,7 @@ scroll.BorderSizePixel = 0
 scroll.ScrollBarThickness = 6
 scroll.ScrollBarImageColor3 = COLORS.accent
 scroll.ScrollingDirection = Enum.ScrollingDirection.Y
-scroll.CanvasSize = UDim2.fromOffset(0, 820)
+scroll.CanvasSize = UDim2.fromOffset(0, 960)
 scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
 scroll.ElasticBehavior = Enum.ElasticBehavior.WhenScrollable
 scroll.Parent = frame
@@ -521,11 +521,16 @@ local selectTruckButton = makeButton(scroll, "TAP TO SELECT TRUCK", UDim2.fromOf
 local truckButton = makeButton(scroll, "LIFT / THROW SELECTED", UDim2.fromOffset(16, 672), UDim2.fromOffset(278, 36), COLORS.panel)
 local truckStatus = makeLabel(scroll, "Tap Select, then tap the truck itself. Works with vehicle models that do not use VehicleSeat too.", UDim2.fromOffset(16, 712), UDim2.fromOffset(278, 38), 9, COLORS.muted, false)
 truckStatus.TextWrapped = true
+local dummyButton = makeButton(scroll, "CREATE LOCAL SEAT TEST DUMMY", UDim2.fromOffset(16, 838), UDim2.fromOffset(278, 36), COLORS.accent)
+local removeDummyButton = makeButton(scroll, "REMOVE TEST DUMMY", UDim2.fromOffset(16, 878), UDim2.fromOffset(278, 32), COLORS.panel)
+local dummyStatus = makeLabel(scroll, "A local-only dummy test. It cannot grant server vehicle ownership.", UDim2.fromOffset(16, 914), UDim2.fromOffset(278, 30), 9, COLORS.muted, false)
+dummyStatus.TextWrapped = true
 local visualThrowButton = makeButton(scroll, "VISUAL THROW (OUTSIDE)", UDim2.fromOffset(16, 754), UDim2.fromOffset(278, 36), COLORS.accent)
 local visualThrowStatus = makeLabel(scroll, "Creates a client-only ghost effect. The real truck will not move for other players.", UDim2.fromOffset(16, 794), UDim2.fromOffset(278, 30), 9, COLORS.muted, false)
 visualThrowStatus.TextWrapped = true
 
 local selectedTruck = nil
+local testDummy = nil
 local selectingTruck = false
 local truckActive = false
 local truckConnection = nil
@@ -606,6 +611,71 @@ local function playVisualTruckThrow()
 end
 
 visualThrowButton.Activated:Connect(playVisualTruckThrow)
+
+local function removeTestDummy()
+    if testDummy then
+        pcall(function() testDummy:Destroy() end)
+        testDummy = nil
+    end
+    dummyStatus.Text = "Test dummy removed."
+end
+
+removeDummyButton.Activated:Connect(removeTestDummy)
+
+dummyButton.Activated:Connect(function()
+    if not selectedTruck or not selectedTruck.Parent then
+        dummyStatus.Text = "Select a truck first."
+        return
+    end
+
+    local character = player.Character
+    local sourceHumanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not character or not sourceHumanoid then
+        dummyStatus.Text = "Your character is not ready."
+        return
+    end
+
+    local seat = selectedTruck:FindFirstChildWhichIsA("VehicleSeat", true)
+        or selectedTruck:FindFirstChildWhichIsA("Seat", true)
+    if not seat then
+        dummyStatus.Text = "No Seat or VehicleSeat found inside this truck."
+        return
+    end
+
+    removeTestDummy()
+    local oldArchivable = character.Archivable
+    local clone
+    local ok, err = pcall(function()
+        character.Archivable = true
+        clone = character:Clone()
+        character.Archivable = oldArchivable
+        assert(clone, "Character clone failed")
+        clone.Name = "DarkSideLocalSeatDummy"
+        for _, item in ipairs(clone:GetDescendants()) do
+            if item:IsA("Script") or item:IsA("LocalScript") or item:IsA("ModuleScript") then
+                item:Destroy()
+            elseif item:IsA("BasePart") then
+                item.Anchored = false
+                item.CanCollide = false
+            end
+        end
+        clone.Parent = workspace
+        local humanoid = clone:FindFirstChildOfClass("Humanoid")
+        assert(humanoid, "Cloned character has no Humanoid")
+        clone:PivotTo(seat.CFrame * CFrame.new(0, 3, 0))
+        task.wait(0.15)
+        seat:Sit(humanoid)
+        testDummy = clone
+    end)
+    character.Archivable = oldArchivable
+    if not ok then
+        if clone then clone:Destroy() end
+        dummyStatus.Text = "Dummy test failed: " .. tostring(err):sub(1, 85)
+        return
+    end
+
+    dummyStatus.Text = "Local dummy placed in seat. Testing seat occupancy only; server control is not guaranteed."
+end)
 
 local function findTappedVehicle(position)
     local camera = workspace.CurrentCamera
@@ -765,5 +835,6 @@ gui.Destroying:Connect(function()
     highlight:Destroy()
     stopFling()
     stopTruckLift()
+    removeTestDummy()
     if truckSelectConnection then truckSelectConnection:Disconnect() end
 end)
