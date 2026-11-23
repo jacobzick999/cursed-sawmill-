@@ -13,6 +13,7 @@ local REMOTE_NAME = "SawmillAction"
 local MAX_CHOP_DISTANCE = 14
 local CHOP_COOLDOWN = 0.45
 local DEFAULT_TREE_HEALTH = 5
+local LOGS_PER_TREE = 3
 local lastChopAt = {}
 
 local remote = ReplicatedStorage:FindFirstChild(REMOTE_NAME)
@@ -49,16 +50,17 @@ local function getTreePosition(tree)
     return nil
 end
 
-local function spawnLog(position, treeType)
+local function spawnLog(position, treeType, index)
     local log = Instance.new("Part")
     log.Name = "SawmillLog"
     log.Shape = Enum.PartType.Cylinder
-    log.Size = Vector3.new(2, 5, 2)
+    log.Size = Vector3.new(2, 4, 2)
     log.Material = Enum.Material.Wood
     log.Color = Color3.fromRGB(126, 83, 49)
     log.Anchored = false
     log.CanCollide = true
-    log.CFrame = CFrame.new(position + Vector3.new(0, 2, 0)) * CFrame.Angles(0, 0, math.rad(90))
+    local sideOffset = (index - (LOGS_PER_TREE + 1) / 2) * 2.4
+    log.CFrame = CFrame.new(position + Vector3.new(sideOffset, 2, 0)) * CFrame.Angles(0, 0, math.rad(90))
     log:SetAttribute("IsSawmillLog", true)
     log:SetAttribute("TreeType", treeType or "Unknown")
     log.Parent = workspace
@@ -105,19 +107,11 @@ local function chopTree(player, tree)
     if health <= 0 then
         local treeType = tree:GetAttribute("TreeType") or tree.Name
         CollectionService:RemoveTag(tree, "ChoppableTree")
-        spawnLog(position, treeType)
-
-        -- A short fall effect makes the tree's removal readable to all players.
-        if tree:IsA("Model") then
-            for _, part in ipairs(tree:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.Anchored = false
-                end
-            end
-        elseif tree:IsA("BasePart") then
-            tree.Anchored = false
+        -- Turn the tree into several collectible logs instead of making it fall.
+        for index = 1, LOGS_PER_TREE do
+            spawnLog(position, treeType, index)
         end
-        Debris:AddItem(tree, 2)
+        tree:Destroy()
     end
 end
 
