@@ -697,8 +697,18 @@ dummyButton.Activated:Connect(function()
     end
 
     removeTestDummy()
+    if seat.Disabled then
+        dummyStatus.Text = "The nearest seat is disabled, so Roblox will not seat the dummy."
+        return
+    end
+    if seat.Occupant then
+        dummyStatus.Text = "Nearest seat is already occupied. Remove the occupant or choose another seat."
+        return
+    end
+
     local oldArchivable = character.Archivable
     local clone
+    local humanoid
     local ok, err = pcall(function()
         character.Archivable = true
         clone = character:Clone()
@@ -711,14 +721,30 @@ dummyButton.Activated:Connect(function()
             elseif item:IsA("BasePart") then
                 item.Anchored = false
                 item.CanCollide = false
+                item.CanTouch = true
             end
         end
         clone.Parent = workspace
-        local humanoid = clone:FindFirstChildOfClass("Humanoid")
+        humanoid = clone:FindFirstChildOfClass("Humanoid")
         assert(humanoid, "Cloned character has no Humanoid")
-        clone:PivotTo(seat.CFrame * CFrame.new(0, 3, 0))
-        task.wait(0.15)
-        seat:Sit(humanoid)
+        humanoid.PlatformStand = false
+        humanoid.Sit = false
+        clone:PivotTo(seat.CFrame * CFrame.new(0, 2.5, 0))
+        task.wait(0.25)
+
+        -- Retry seating and verify Roblox reports actual occupancy.
+        for attempt = 1, 8 do
+            if not seat.Parent then error("Seat was removed during the test") end
+            if seat.Occupant == humanoid or humanoid.SeatPart == seat then
+                break
+            end
+            pcall(function()
+                seat:Sit(humanoid)
+                humanoid.Sit = true
+                humanoid:ChangeState(Enum.HumanoidStateType.Seated)
+            end)
+            task.wait(0.25)
+        end
         testDummy = clone
     end)
     character.Archivable = oldArchivable
@@ -728,7 +754,11 @@ dummyButton.Activated:Connect(function()
         return
     end
 
-    dummyStatus.Text = "Local dummy placed in seat. Testing seat occupancy only; server control is not guaranteed."
+    if seat.Occupant == humanoid or humanoid.SeatPart == seat then
+        dummyStatus.Text = "SUCCESS: Roblox reports the local dummy seated. This does not grant server vehicle ownership."
+    else
+        dummyStatus.Text = "Roblox did not seat the clone after 8 tries. It is only standing above the seat; this client-only clone may not be accepted as a real player."
+    end
 end)
 
 local function findTappedVehicle(position)
