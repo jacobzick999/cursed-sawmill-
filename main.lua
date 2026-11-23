@@ -16,12 +16,13 @@ local oldGui = playerGui:FindFirstChild("DarkSideRotation")
 if oldGui then oldGui:Destroy() end
 
 local COLORS = {
-    bg = Color3.fromRGB(24, 25, 34),
-    panel = Color3.fromRGB(38, 40, 52),
-    line = Color3.fromRGB(72, 74, 92),
-    text = Color3.fromRGB(245, 244, 250),
-    muted = Color3.fromRGB(174, 173, 190),
-    accent = Color3.fromRGB(139, 108, 232),
+    bg = Color3.fromRGB(16, 17, 27),
+    panel = Color3.fromRGB(31, 33, 48),
+    line = Color3.fromRGB(91, 78, 135),
+    text = Color3.fromRGB(248, 247, 255),
+    muted = Color3.fromRGB(166, 166, 190),
+    accent = Color3.fromRGB(142, 94, 255),
+    accentDark = Color3.fromRGB(78, 54, 148),
 }
 
 local gui = Instance.new("ScreenGui")
@@ -37,10 +38,20 @@ frame.Position = UDim2.new(0, 12, 0.5, -235)
 frame.BackgroundColor3 = COLORS.bg
 frame.BorderSizePixel = 0
 frame.Parent = gui
-Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 12)
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 16)
+
+local frameGradient = Instance.new("UIGradient")
+frameGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(28, 25, 44)),
+    ColorSequenceKeypoint.new(1, COLORS.bg),
+})
+frameGradient.Rotation = 35
+frameGradient.Parent = frame
 
 local stroke = Instance.new("UIStroke")
 stroke.Color = COLORS.line
+stroke.Thickness = 1.5
+stroke.Transparency = 0.12
 stroke.Parent = frame
 
 local scale = Instance.new("UIScale")
@@ -72,12 +83,30 @@ local function makeButton(parent, text, pos, size, color)
     button.TextSize = 13
     button.AutoButtonColor = true
     button.Parent = parent
-    Instance.new("UICorner", button).CornerRadius = UDim.new(0, 7)
+    Instance.new("UICorner", button).CornerRadius = UDim.new(0, 9)
+    local outline = Instance.new("UIStroke")
+    outline.Color = color or COLORS.line
+    outline.Transparency = color and 0.35 or 0.65
+    outline.Thickness = 1
+    outline.Parent = button
+    if color == COLORS.accent then
+        local gradient = Instance.new("UIGradient")
+        gradient.Color = ColorSequence.new(COLORS.accent, COLORS.accentDark)
+        gradient.Rotation = 0
+        gradient.Parent = button
+    end
     return button
 end
 
-makeLabel(frame, "DARK SIDE", UDim2.fromOffset(16, 10), UDim2.fromOffset(190, 24), 17, COLORS.text, true)
-makeLabel(frame, "STRUCTURE ROTATION • MOBILE", UDim2.fromOffset(16, 34), UDim2.fromOffset(240, 18), 10, COLORS.muted, true)
+makeLabel(frame, "DARK SIDE", UDim2.fromOffset(16, 8), UDim2.fromOffset(190, 26), 18, COLORS.text, true)
+makeLabel(frame, "SAWMILL CONTROL CENTER", UDim2.fromOffset(17, 34), UDim2.fromOffset(220, 16), 9, COLORS.muted, true)
+local headerAccent = Instance.new("Frame")
+headerAccent.Position = UDim2.fromOffset(16, 52)
+headerAccent.Size = UDim2.fromOffset(42, 3)
+headerAccent.BackgroundColor3 = COLORS.accent
+headerAccent.BorderSizePixel = 0
+headerAccent.Parent = frame
+Instance.new("UICorner", headerAccent).CornerRadius = UDim.new(1, 0)
 
 local dragButton = makeButton(frame, "MOVE", UDim2.new(1, -112, 0, 12), UDim2.fromOffset(56, 30), COLORS.accent)
 local closeButton = makeButton(frame, "X", UDim2.new(1, -48, 0, 12), UDim2.fromOffset(34, 30))
@@ -138,8 +167,20 @@ UserInputService.InputEnded:Connect(function(input)
 end)
 local selectButton = makeButton(scroll, "SELECT STRUCTURE", UDim2.fromOffset(14, 10), UDim2.fromOffset(282, 36), COLORS.accent)
 
-local selectedLabel = makeLabel(scroll, "Target: none", UDim2.fromOffset(16, 54), UDim2.fromOffset(278, 24), 12, COLORS.text, true)
-local statusLabel = makeLabel(scroll, "Tap Select, then tap a placed structure.", UDim2.fromOffset(16, 78), UDim2.fromOffset(278, 34), 10, COLORS.muted, false)
+local selectedLabel = makeLabel(scroll, "TARGET  •  NONE", UDim2.fromOffset(16, 52), UDim2.fromOffset(278, 20), 11, COLORS.text, true)
+local statusCard = Instance.new("Frame")
+statusCard.Position = UDim2.fromOffset(14, 76)
+statusCard.Size = UDim2.fromOffset(282, 40)
+statusCard.BackgroundColor3 = COLORS.panel
+statusCard.BackgroundTransparency = 0.15
+statusCard.BorderSizePixel = 0
+statusCard.Parent = scroll
+Instance.new("UICorner", statusCard).CornerRadius = UDim.new(0, 8)
+local statusOutline = Instance.new("UIStroke")
+statusOutline.Color = COLORS.line
+statusOutline.Transparency = 0.55
+statusOutline.Parent = statusCard
+local statusLabel = makeLabel(statusCard, "Tap Select, then tap a placed structure.", UDim2.fromOffset(10, 3), UDim2.new(1, -20, 1, -6), 10, COLORS.muted, false)
 statusLabel.TextWrapped = true
 
 makeLabel(scroll, "Rotation step (degrees)", UDim2.fromOffset(16, 120), UDim2.fromOffset(170, 24), 12, COLORS.text, true)
@@ -154,7 +195,11 @@ rotationBox.TextSize = 14
 rotationBox.Text = "15"
 rotationBox.ClearTextOnFocus = false
 rotationBox.Parent = scroll
-Instance.new("UICorner", rotationBox).CornerRadius = UDim.new(0, 6)
+Instance.new("UICorner", rotationBox).CornerRadius = UDim.new(0, 8)
+local rotationStroke = Instance.new("UIStroke")
+rotationStroke.Color = COLORS.line
+rotationStroke.Transparency = 0.25
+rotationStroke.Parent = rotationBox
 
 makeLabel(scroll, "Move step (studs)", UDim2.fromOffset(16, 160), UDim2.fromOffset(170, 24), 12, COLORS.text, true)
 local moveBox = Instance.new("TextBox")
@@ -168,7 +213,11 @@ moveBox.TextSize = 14
 moveBox.Text = "1"
 moveBox.ClearTextOnFocus = false
 moveBox.Parent = scroll
-Instance.new("UICorner", moveBox).CornerRadius = UDim.new(0, 6)
+Instance.new("UICorner", moveBox).CornerRadius = UDim.new(0, 8)
+local moveStroke = Instance.new("UIStroke")
+moveStroke.Color = COLORS.line
+moveStroke.Transparency = 0.25
+moveStroke.Parent = moveBox
 
 makeLabel(scroll, "ROTATE", UDim2.fromOffset(16, 198), UDim2.fromOffset(100, 20), 10, COLORS.muted, true)
 local axisColors = {
@@ -203,7 +252,7 @@ local function clearSelection()
     selectedModel = nil
     highlight.Adornee = nil
     highlight.Enabled = false
-    selectedLabel.Text = "Target: none"
+    selectedLabel.Text = "TARGET  •  NONE"
 end
 
 local function selectFromScreen(position)
@@ -238,7 +287,7 @@ local function selectFromScreen(position)
     selectedModel = candidate
     highlight.Adornee = candidate
     highlight.Enabled = true
-    selectedLabel.Text = "Target: " .. candidate.Name
+    selectedLabel.Text = "TARGET  •  " .. string.upper(candidate.Name)
     setStatus("Selected. Rotation and movement are local previews.")
     selecting = false
     selectButton.Text = "SELECT STRUCTURE"
@@ -343,7 +392,7 @@ for _, item in ipairs(moveButtons) do
 end
 
 
--- Slightly taller panel; responsive scaling keeps all touch targets visible.
+-- Responsive panel sizing keeps the redesigned controls usable on mobile.
 frame.Size = UDim2.fromOffset(310, 390)
 local function updateScale()
     local camera = workspace.CurrentCamera
