@@ -79,7 +79,49 @@ end
 makeLabel(frame, "DARK SIDE", UDim2.fromOffset(16, 10), UDim2.fromOffset(190, 24), 17, COLORS.text, true)
 makeLabel(frame, "STRUCTURE ROTATION • MOBILE", UDim2.fromOffset(16, 34), UDim2.fromOffset(240, 18), 10, COLORS.muted, true)
 
+local dragButton = makeButton(frame, "MOVE", UDim2.new(1, -112, 0, 12), UDim2.fromOffset(56, 30), COLORS.accent)
 local closeButton = makeButton(frame, "X", UDim2.new(1, -48, 0, 12), UDim2.fromOffset(34, 30))
+
+-- Drag the panel using the MOVE handle (works with touch on Android).
+local dragging = false
+local dragTouch = nil
+local dragStart = nil
+local panelStart = nil
+
+dragButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragTouch = input
+        dragStart = input.Position
+        panelStart = frame.Position
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if not dragging then return end
+    local isMouseMove = input.UserInputType == Enum.UserInputType.MouseMovement
+    local isTouchMove = input.UserInputType == Enum.UserInputType.Touch
+        and dragTouch ~= nil and input == dragTouch
+    if not isMouseMove and not isTouchMove then return end
+
+    local delta = input.Position - dragStart
+    local camera = workspace.CurrentCamera
+    if not camera then return end
+    local viewport = camera.ViewportSize
+    local width = frame.AbsoluteSize.X
+    local height = frame.AbsoluteSize.Y
+    local x = math.clamp(panelStart.X.Offset + delta.X, 0, math.max(0, viewport.X - width))
+    local y = math.clamp(panelStart.Y.Offset + delta.Y, 0, math.max(0, viewport.Y - height))
+    frame.Position = UDim2.fromOffset(x, y)
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input == dragTouch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+        dragTouch = nil
+    end
+end)
 local selectButton = makeButton(frame, "SELECT STRUCTURE", UDim2.fromOffset(14, 64), UDim2.fromOffset(282, 36), COLORS.accent)
 
 local selectedLabel = makeLabel(frame, "Target: none", UDim2.fromOffset(16, 108), UDim2.fromOffset(278, 24), 12, COLORS.text, true)
