@@ -92,7 +92,7 @@ scroll.BorderSizePixel = 0
 scroll.ScrollBarThickness = 6
 scroll.ScrollBarImageColor3 = COLORS.accent
 scroll.ScrollingDirection = Enum.ScrollingDirection.Y
-scroll.CanvasSize = UDim2.fromOffset(0, 715)
+scroll.CanvasSize = UDim2.fromOffset(0, 770)
 scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
 scroll.ElasticBehavior = Enum.ElasticBehavior.WhenScrollable
 scroll.Parent = frame
@@ -515,18 +515,64 @@ flingButton.Activated:Connect(function()
 end)
 
 
--- LOCAL VEHICLE LIFT / THROW TEST.
--- Detects nearby vehicle models by VehicleSeat and applies local impulses.
--- Server ownership may prevent visible movement or replication.
-local truckButton = makeButton(scroll, "LIFT / THROW TRUCKS", UDim2.fromOffset(16, 630), UDim2.fromOffset(278, 36), COLORS.accent)
-local truckStatus = makeLabel(scroll, "Targets nearby vehicles with a VehicleSeat. Client physics access is not guaranteed.", UDim2.fromOffset(16, 670), UDim2.fromOffset(278, 34), 9, COLORS.muted, false)
+-- MANUAL VEHICLE PICKUP / THROW TEST.
+-- User taps a vehicle model; client-side impulses may be rejected by server ownership.
+local selectTruckButton = makeButton(scroll, "TAP TO SELECT TRUCK", UDim2.fromOffset(16, 630), UDim2.fromOffset(278, 36), COLORS.accent)
+local truckButton = makeButton(scroll, "LIFT / THROW SELECTED", UDim2.fromOffset(16, 672), UDim2.fromOffset(278, 36), COLORS.panel)
+local truckStatus = makeLabel(scroll, "Tap Select, then tap the truck itself. Works with vehicle models that do not use VehicleSeat too.", UDim2.fromOffset(16, 712), UDim2.fromOffset(278, 38), 9, COLORS.muted, false)
 truckStatus.TextWrapped = true
 
+local selectedTruck = nil
+local selectingTruck = false
 local truckActive = false
 local truckConnection = nil
-local truckCooldowns = {}
-local TRUCK_RADIUS = 80
-local MAX_TRUCKS_PER_PULSE = 5
+local truckLastPulse = 0
+
+local function findTappedVehicle(position)
+    local camera = workspace.CurrentCamera
+    if not camera then return nil end
+    local ray = camera:ScreenPointToRay(position.X, position.Y)
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = player.Character and {player.Character} or {}
+    local result = workspace:Raycast(ray.Origin, ray.Direction * 1500, params)
+    if not result then return nil end
+
+    local node = result.Instance
+    while node and node ~= workspace do
+        if node:IsA("Model") and not node:FindFirstChildOfClass("Humanoid") then
+            local count = 0
+            for _, item in ipairs(node:GetDescendants()) do
+                if item:IsA("BasePart") then count = count + 1 end
+            end
+            if count >= 2 then return node end
+        end
+        node = node.Parent
+    end
+    return nil
+end
+
+selectTruckButton.Activated:Connect(function()
+    selectingTruck = not selectingTruck
+    selectTruckButton.Text = selectingTruck and "NOW TAP THE TRUCK..." or "TAP TO SELECT TRUCK"
+    truckStatus.Text = selectingTruck and "Tap directly on the truck body in the game." or "Truck selection cancelled."
+end)
+
+local truckSelectConnection = UserInputService.InputBegan:Connect(function(input, processed)
+    if processed or not selectingTruck then return end
+    if input.UserInputType ~= Enum.UserInputType.Touch
+        and input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+
+    local model = findTappedVehicle(input.Position)
+    selectingTruck = false
+    selectTruckButton.Text = "TAP TO SELECT TRUCK"
+    if model then
+        selectedTruck = model
+        truckStatus.Text = "Selected: " .. model.Name .. ". Press LIFT / THROW SELECTED."
+    else
+        truckStatus.Text = "Couldn't identify a model there. Tap the truck body, not the ground."
+    end
+end)
 
 local function stopTruckLift()
     truckActive = false
@@ -534,95 +580,70 @@ local function stopTruckLift()
         truckConnection:Disconnect()
         truckConnection = nil
     end
-    truckButton.Text = "LIFT / THROW TRUCKS"
-    truckStatus.Text = "Truck lift stopped."
+    truckButton.Text = "LIFT / THROW SELECTED"
+    truckStatus.Text = selectedTruck and ("Stopped. Selected: " .. selectedTruck.Name) or "Truck lift stopped."
 end
 
 local function startTruckLift()
-    local character = player.Character
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-    if not root then
-        truckStatus.Text = "Your character is not ready. Try again."
+    if not selectedTruck or not selectedTruck.Parent then
+        truckStatus.Text = "Select a truck first using TAP TO SELECT TRUCK."
         return
     end
 
     truckActive = true
-    table.clear(truckCooldowns)
+    truckLastPulse = 0
     truckButton.Text = "STOP TRUCK LIFT"
-    truckStatus.Text = "Scanning for nearby vehicles..."
+    truckStatus.Text = "Applying lift and throw to selected truck..."
 
-    local overlap = OverlapParams.new()
-    overlap.FilterType = Enum.RaycastFilterType.Exclude
-    overlap.FilterDescendantsInstances = {character}
-    overlap.MaxParts = 2500
-
-    local elapsed = 0
     truckConnection = RunService.Heartbeat:Connect(function(dt)
-        if not truckActive then return end
-        elapsed = elapsed + dt
-        if elapsed < 0.2 then return end
-        elapsed = 0
+        local ok, err = pcall(function()
+            if not truckActive then return end
+            if not selectedTruck or not selectedTruck.Parent then
+                stopTruckLift()
+                truckStatus.Text = "Selected truck is no longer available."
+                return
+            end
 
-        local currentCharacter = player.Character
-        local currentRoot = currentCharacter and currentCharacter:FindFirstChild("HumanoidRootPart")
-        if not currentRoot then
-            stopTruckLift()
-            return
-        end
+            truckLastPulse = truckLastPulse + dt
+            if truckLastPulse < 0.25 then return end
+            truckLastPulse = 0
 
-        overlap.FilterDescendantsInstances = {currentCharacter}
-        local ok, parts = pcall(function()
-            return workspace:GetPartBoundsInRadius(currentRoot.Position, TRUCK_RADIUS, overlap)
+            local assemblies = {}
+            local partsFound = 0
+            for _, item in ipairs(selectedTruck:GetDescendants()) do
+                if item:IsA("BasePart") then
+                    partsFound = partsFound + 1
+                    local assembly = item.AssemblyRootPart or item
+                    if assembly and not assembly.Anchored then
+                        assemblies[assembly] = true
+                    end
+                end
+            end
+
+            local appliedCount = 0
+            local power = powerValue / 100
+            for assembly in pairs(assemblies) do
+                local mass = assembly.AssemblyMass
+                if mass > 0 and mass < math.huge then
+                    local impulse = Vector3.new(0, 75 + power * 150, 0)
+                        + (assembly.Position - (player.Character and player.Character:GetPivot().Position or assembly.Position)).Unit
+                        * (25 + power * 90)
+                    local success = pcall(function()
+                        assembly:ApplyImpulse(impulse * mass)
+                        assembly:ApplyAngularImpulse(Vector3.new(0, 1, 0) * mass * (20 + power * 45))
+                    end)
+                    if success then appliedCount = appliedCount + 1 end
+                end
+            end
+
+            truckStatus.Text = "Parts: " .. partsFound .. " | unanchored assemblies: "
+                .. #({}) .. " | impulse attempted: " .. appliedCount
+                .. ". Server ownership may prevent movement."
         end)
         if not ok then
-            truckStatus.Text = "Could not scan for vehicles."
-            return
+            truckStatus.Text = "Truck test error: " .. tostring(err):sub(1, 110)
+            stopTruckLift()
         end
-
-        local vehicles = {}
-        for _, part in ipairs(parts) do
-            if part:IsA("BasePart") then
-                local model = part:FindFirstAncestorOfClass("Model")
-                if model and not vehicles[model] and not model:FindFirstChildOfClass("Humanoid") then
-                    local seat = model:FindFirstChildWhichIsA("VehicleSeat", true)
-                    if seat then
-                        local assembly = seat.AssemblyRootPart or seat
-                        if assembly and not assembly.Anchored then
-                            vehicles[model] = assembly
-                        end
-                    end
-                end
-            end
-        end
-
-        local count = 0
-        local now = os.clock()
-        for model, assembly in pairs(vehicles) do
-            if count >= MAX_TRUCKS_PER_PULSE then break end
-            if assembly.Parent and not assembly.Anchored
-                and (not truckCooldowns[model] or now - truckCooldowns[model] >= 0.35) then
-                local offset = assembly.Position - currentRoot.Position
-                if offset.Magnitude > 0.1 then
-                    local direction = offset.Unit
-                    local power = powerValue / 100
-                    local mass = assembly.AssemblyMass
-                    local lift = Vector3.new(0, 65 + power * 115, 0)
-                    local throw = direction * (25 + power * 75)
-                    local applied = pcall(function()
-                        assembly:ApplyImpulse((lift + throw) * mass)
-                        assembly:ApplyAngularImpulse(Vector3.new(0, 1, 0) * mass * (15 + power * 35))
-                    end)
-                    if applied then
-                        truckCooldowns[model] = now
-                        count = count + 1
-                    end
-                end
-            end
-        end
-
-        truckStatus.Text = count > 0
-            and ("Applied lift/throw impulse to " .. count .. " vehicle(s).")
-            or "No movable vehicles with VehicleSeats detected. Server ownership may block movement."
     end)
 end
 
@@ -665,4 +686,5 @@ gui.Destroying:Connect(function()
     highlight:Destroy()
     stopFling()
     stopTruckLift()
+    if truckSelectConnection then truckSelectConnection:Disconnect() end
 end)
