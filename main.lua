@@ -874,7 +874,7 @@ sizeButton.Activated:Connect(function()
     sizeButton.Text = largePanel and "LARGE ✓" or "PANEL SIZE"
     updateScale()
 end)
-scroll.CanvasSize = UDim2.fromOffset(0, 1040)
+scroll.CanvasSize = UDim2.fromOffset(0, 1140)
 
 -- Responsive panel sizing and compact minimize mode.
 local minimized = false
