@@ -616,6 +616,202 @@ autoTreeButton.Activated:Connect(function()
     end)
 end)
 
+
+-- EXTRA SAWMILL UTILITIES
+-- Save a waypoint and return by ordinary Humanoid movement/pathfinding.
+-- Find nearby dropped logs/items with local-only highlights.
+-- Equip an axe already present in the player's Backpack.
+
+local PathfindingService = game:GetService("PathfindingService")
+local saveReturnButton = makeButton(scroll, "SAVE CURRENT LOCATION", UDim2.fromOffset(14, 724), UDim2.fromOffset(282, 34), COLORS.accent)
+local returnButton = makeButton(scroll, "WALK BACK TO SAVED LOCATION", UDim2.fromOffset(14, 764), UDim2.fromOffset(282, 34))
+local waypointStatus = makeLabel(scroll, "WAYPOINT  •  Not saved", UDim2.fromOffset(16, 802), UDim2.fromOffset(278, 30), 9, COLORS.muted, false)
+waypointStatus.TextWrapped = true
+local savedWaypoint = nil
+local returnToken = 0
+
+saveReturnButton.Activated:Connect(function()
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root then
+        waypointStatus.Text = "No character root found. Try after respawning."
+        return
+    end
+    savedWaypoint = root.Position
+    waypointStatus.Text = string.format("SAVED  •  X %.0f  Y %.0f  Z %.0f", savedWaypoint.X, savedWaypoint.Y, savedWaypoint.Z)
+end)
+
+returnButton.Activated:Connect(function()
+    if not savedWaypoint then
+        waypointStatus.Text = "Save a location first."
+        return
+    end
+    returnToken += 1
+    local myToken = returnToken
+    task.spawn(function()
+        local character = player.Character
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        if not humanoid or not root then
+            waypointStatus.Text = "Character not ready. Try again."
+            return
+        end
+        waypointStatus.Text = "Finding a walking route..."
+        local path = PathfindingService:CreatePath({
+            AgentRadius = 2,
+            AgentHeight = 5,
+            AgentCanJump = true,
+        })
+        local ok = pcall(function() path:ComputeAsync(root.Position, savedWaypoint) end)
+        if myToken ~= returnToken then return end
+        if not ok or path.Status ~= Enum.PathStatus.Success then
+            waypointStatus.Text = "No walkable path found. Move closer and try again."
+            return
+        end
+        local waypoints = path:GetWaypoints()
+        for _, waypoint in ipairs(waypoints) do
+            if myToken ~= returnToken or not gui.Parent then return end
+            if not humanoid.Parent or not root.Parent then
+                waypointStatus.Text = "Character changed during return."
+                return
+            end
+            if waypoint.Action == Enum.PathWaypointAction.Jump then
+                humanoid.Jump = true
+            end
+            humanoid:MoveTo(waypoint.Position)
+            local reached = humanoid.MoveToFinished:Wait()
+            if not reached then
+                waypointStatus.Text = "Path blocked. Try saving a closer location."
+                return
+            end
+        end
+        waypointStatus.Text = "Returned using normal walking movement."
+    end)
+end)
+
+local equipAxeButton = makeButton(scroll, "EQUIP AXE", UDim2.fromOffset(14, 840), UDim2.fromOffset(282, 34))
+local equipStatus = makeLabel(scroll, "AXE  •  Ready", UDim2.fromOffset(16, 878), UDim2.fromOffset(278, 24), 9, COLORS.muted, false)
+equipAxeButton.Activated:Connect(function()
+    local ok = equipAvailableAxe()
+    equipStatus.Text = ok and "AXE  •  Equipped from your inventory" or "AXE  •  No axe found in your inventory"
+end)
+
+local finderButton = makeButton(scroll, "START ITEM FINDER", UDim2.fromOffset(14, 910), UDim2.fromOffset(282, 34), COLORS.accent)
+local finderStatus = makeLabel(scroll, "ITEM FINDER  •  Off", UDim2.fromOffset(16, 948), UDim2.fromOffset(278, 30), 9, COLORS.muted, false)
+finderStatus.TextWrapped = true
+local finderRunning = false
+local itemHighlights = {}
+local ITEM_HINTS = {"log", "wood", "drop", "item"}
+local function isFindableItem(object)
+    local name = string.lower(object.Name)
+    for _, hint in ipairs(ITEM_HINTS) do
+        if string.find(name, hint, 1, true) then return true end
+    end
+    return false
+end
+local function clearItemHighlights()
+    for object, marker in pairs(itemHighlights) do
+        if marker then marker:Destroy() end
+        itemHighlights[object] = nil
+    end
+end
+local function stopItemFinder()
+    finderRunning = false
+    clearItemHighlights()
+    finderButton.Text = "START ITEM FINDER"
+    finderStatus.Text = "ITEM FINDER  •  Off"
+end
+finderButton.Activated:Connect(function()
+    if finderRunning then
+        stopItemFinder()
+        return
+    end
+    finderRunning = true
+    finderButton.Text = "STOP ITEM FINDER"
+    task.spawn(function()
+        while finderRunning and gui.Parent do
+            local character = player.Character
+            local root = character and character:FindFirstChild("HumanoidRootPart")
+            local found = 0
+            if root then
+                for _, object in ipairs(workspace:GetDescendants()) do
+                    if found >= 35 then break end
+                    if (object:IsA("Model") or object:IsA("BasePart"))
+                        and not (character and object:IsDescendantOf(character))
+                        and isFindableItem(object) then
+                        local ok, position = pcall(function()
+                            if object:IsA("Model") then return object:GetPivot().Position end
+                            return object.Position
+                        end)
+                        if ok and (position - root.Position).Magnitude <= 100 then
+                            if not itemHighlights[object] then
+                                local marker = Instance.new("Highlight")
+                                marker.Name = "DarkSideItemFinder"
+                                marker.FillColor = Color3.fromRGB(255, 205, 75)
+                                marker.OutlineColor = Color3.fromRGB(255, 245, 190)
+                                marker.FillTransparency = 0.72
+                                marker.Adornee = object
+                                marker.Parent = workspace
+                                itemHighlights[object] = marker
+                            end
+                            found += 1
+                        end
+                    end
+                end
+            end
+            for object, marker in pairs(itemHighlights) do
+                if not object:IsDescendantOf(workspace) then
+                    marker:Destroy()
+                    itemHighlights[object] = nil
+                end
+            end
+            finderStatus.Text = "ITEM FINDER  •  Highlighted " .. found .. " nearby matches (local only)"
+            task.wait(2)
+        end
+    end)
+end)
+
+local themeButton = makeButton(scroll, "CHANGE PANEL THEME", UDim2.fromOffset(14, 984), UDim2.fromOffset(136, 34))
+local sizeButton = makeButton(scroll, "PANEL SIZE", UDim2.fromOffset(160, 984), UDim2.fromOffset(136, 34))
+local themeIndex = 1
+local themePalettes = {
+    {bg = Color3.fromRGB(15,18,38), panel = Color3.fromRGB(28,34,58), line = Color3.fromRGB(75,218,230), accent = Color3.fromRGB(255,76,168)},
+    {bg = Color3.fromRGB(25,35,25), panel = Color3.fromRGB(38,58,39), line = Color3.fromRGB(137,230,112), accent = Color3.fromRGB(72,190,105)},
+    {bg = Color3.fromRGB(35,22,18), panel = Color3.fromRGB(65,39,31), line = Color3.fromRGB(255,176,90), accent = Color3.fromRGB(235,105,55)},
+    {bg = Color3.fromRGB(24,22,43), panel = Color3.fromRGB(45,37,76), line = Color3.fromRGB(177,145,255), accent = Color3.fromRGB(128,96,255)},
+}
+themeButton.Activated:Connect(function()
+    themeIndex = themeIndex % #themePalettes + 1
+    local palette = themePalettes[themeIndex]
+    frame.BackgroundColor3 = palette.bg
+    stroke.Color = palette.line
+    statusOutline.Color = palette.line
+    rotationStroke.Color = palette.line
+    moveStroke.Color = palette.line
+    scroll.ScrollBarImageColor3 = palette.accent
+    headerAccent.BackgroundColor3 = palette.accent
+    for _, child in ipairs(scroll:GetChildren()) do
+        if child:IsA("TextButton") then
+            child.BackgroundColor3 = palette.panel
+            for _, decoration in ipairs(child:GetChildren()) do
+                if decoration:IsA("UIStroke") then decoration.Color = palette.line end
+            end
+        end
+    end
+    themeButton.Text = "THEME " .. themeIndex .. " ✓"
+end)
+local largePanel = false
+sizeButton.Activated:Connect(function()
+    largePanel = not largePanel
+    FULL_HEIGHT = largePanel and 440 or 390
+    frame.Size = UDim2.fromOffset(largePanel and 340 or 310, minimized and MIN_HEIGHT or FULL_HEIGHT)
+    frame.Size = UDim2.fromOffset(310, minimized and MIN_HEIGHT or FULL_HEIGHT)
+    scale.Scale = largePanel and 1.08 or 1
+    sizeButton.Text = largePanel and "LARGE ✓" or "PANEL SIZE"
+    updateScale()
+end)
+scroll.CanvasSize = UDim2.fromOffset(0, 1040)
+
 -- Responsive panel sizing and compact minimize mode.
 local minimized = false
 local FULL_HEIGHT = 390
