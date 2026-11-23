@@ -8,6 +8,7 @@ end
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 assert(player, "Run this from a Roblox client")
 
@@ -91,7 +92,7 @@ scroll.BorderSizePixel = 0
 scroll.ScrollBarThickness = 6
 scroll.ScrollBarImageColor3 = COLORS.accent
 scroll.ScrollingDirection = Enum.ScrollingDirection.Y
-scroll.CanvasSize = UDim2.fromOffset(0, 530)
+scroll.CanvasSize = UDim2.fromOffset(0, 640)
 scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
 scroll.ElasticBehavior = Enum.ElasticBehavior.WhenScrollable
 scroll.Parent = frame
@@ -341,6 +342,179 @@ for _, item in ipairs(moveButtons) do
     local button = makeButton(scroll, item[1], UDim2.fromOffset(item[2], item[3]), UDim2.fromOffset(132, 30))
     button.Activated:Connect(function() move(item[1]) end)
 end
+
+
+-- LOCAL-ONLY item attraction: gifts and clearly dropped tree/log objects.
+makeLabel(scroll, "ITEM DISTRACTION (LOCAL PREVIEW)", UDim2.fromOffset(16, 466), UDim2.fromOffset(278, 22), 11, COLORS.accent, true)
+local giftToggle = makeButton(scroll, "PULL GIFTS: OFF", UDim2.fromOffset(16, 492), UDim2.fromOffset(132, 34))
+local treeToggle = makeButton(scroll, "PULL DROPPED TREES: OFF", UDim2.fromOffset(162, 492), UDim2.fromOffset(132, 34))
+local radiusLabel = makeLabel(scroll, "Pull radius (studs)", UDim2.fromOffset(16, 535), UDim2.fromOffset(170, 24), 11, COLORS.text, true)
+local radiusBox = Instance.new("TextBox")
+radiusBox.Position = UDim2.fromOffset(206, 532)
+radiusBox.Size = UDim2.fromOffset(88, 30)
+radiusBox.BackgroundColor3 = COLORS.panel
+radiusBox.BorderSizePixel = 0
+radiusBox.TextColor3 = COLORS.text
+radiusBox.Font = Enum.Font.GothamBold
+radiusBox.TextSize = 14
+radiusBox.Text = "35"
+radiusBox.ClearTextOnFocus = false
+radiusBox.Parent = scroll
+Instance.new("UICorner", radiusBox).CornerRadius = UDim.new(0, 6)
+local stopPullButton = makeButton(scroll, "STOP ITEM PULL", UDim2.fromOffset(16, 572), UDim2.fromOffset(278, 32), Color3.fromRGB(120, 55, 68))
+local pullStatus = makeLabel(scroll, "Attraction affects only locally movable objects.", UDim2.fromOffset(16, 608), UDim2.fromOffset(278, 28), 9, COLORS.muted, false)
+pullStatus.TextWrapped = true
+
+local pullGifts = false
+local pullTrees = false
+local pullConnection = nil
+local scanClock = 0
+local pullTargets = {}
+local originalPositions = {}
+
+local function isCharacterObject(object)
+    for _, otherPlayer in ipairs(Players:GetPlayers()) do
+        local character = otherPlayer.Character
+        if character and (object == character or object:IsDescendantOf(character)) then
+            return true
+        end
+    end
+    return false
+end
+
+local function getPullRoot(object)
+    local current = object
+    while current and current.Parent ~= workspace do
+        if current:IsA("Model") then
+            return current
+        end
+        current = current.Parent
+    end
+    if object:IsA("Model") or object:IsA("BasePart") then
+        return object
+    end
+    return nil
+end
+
+local function isPullCandidate(object)
+    if not (object:IsA("Model") or object:IsA("BasePart")) then return false end
+    if isCharacterObject(object) then return false end
+    local name = string.lower(object.Name)
+    local isGift = string.find(name, "gift", 1, true) ~= nil
+    local hasDroppedFlag = object:GetAttribute("Dropped") == true
+    local looksLikeDroppedTree = string.find(name, "dropped", 1, true) ~= nil
+        or string.find(name, "log", 1, true) ~= nil
+        or string.find(name, "wood", 1, true) ~= nil
+        or hasDroppedFlag
+    local isTree = string.find(name, "tree", 1, true) ~= nil and looksLikeDroppedTree
+    return (pullGifts and isGift) or (pullTrees and (isTree or looksLikeDroppedTree))
+end
+
+local function getObjectPosition(object)
+    if object:IsA("Model") then
+        return object:GetPivot().Position
+    end
+    return object.Position
+end
+
+local function moveObjectToward(object, targetPosition, alpha)
+    if object:IsA("Model") then
+        local pivot = object:GetPivot()
+        local nextPosition = pivot.Position:Lerp(targetPosition, alpha)
+        object:PivotTo(CFrame.new(nextPosition) * (pivot - pivot.Position))
+    elseif object:IsA("BasePart") then
+        object.CFrame = object.CFrame:Lerp(CFrame.new(targetPosition) * (object.CFrame - object.Position), alpha)
+    end
+end
+
+local function restorePullTargets()
+    for object, original in pairs(originalPositions) do
+        if object and object.Parent then
+            pcall(function()
+                if object:IsA("Model") then
+                    object:PivotTo(original)
+                elseif object:IsA("BasePart") then
+                    object.CFrame = original
+                end
+            end)
+        end
+    end
+    table.clear(originalPositions)
+    table.clear(pullTargets)
+end
+
+local function stopItemPull()
+    pullGifts = false
+    pullTrees = false
+    giftToggle.Text = "PULL GIFTS: OFF"
+    treeToggle.Text = "PULL DROPPED TREES: OFF"
+    if pullConnection then
+        pullConnection:Disconnect()
+        pullConnection = nil
+    end
+    restorePullTargets()
+    pullStatus.Text = "Item pull stopped. Local preview positions restored."
+end
+
+local function startItemPull()
+    if pullConnection then pullConnection:Disconnect() pullConnection = nil end
+    if not pullGifts and not pullTrees then
+        pullStatus.Text = "Turn on Gifts or Dropped Trees first."
+        return
+    end
+    pullStatus.Text = "Searching nearby gifts and dropped tree items..."
+    scanClock = 0
+    pullConnection = RunService.Heartbeat:Connect(function(deltaTime)
+        local character = player.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        if not root then return end
+        scanClock = scanClock + deltaTime
+        if scanClock >= 0.6 then
+            scanClock = 0
+            table.clear(pullTargets)
+            local radius = tonumber(radiusBox.Text) or 35
+            radius = math.clamp(radius, 5, 250)
+            for _, object in ipairs(workspace:GetDescendants()) do
+                if isPullCandidate(object) then
+                    local candidate = getPullRoot(object)
+                    if candidate and not pullTargets[candidate] then
+                        local ok, position = pcall(getObjectPosition, candidate)
+                        if ok and (position - root.Position).Magnitude <= radius then
+                            pullTargets[candidate] = true
+                            if not originalPositions[candidate] then
+                                originalPositions[candidate] = candidate:IsA("Model") and candidate:GetPivot() or candidate.CFrame
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        for object in pairs(pullTargets) do
+            if object and object.Parent then
+                pcall(function()
+                    local position = getObjectPosition(object)
+                    local offset = root.Position - position
+                    if offset.Magnitude > 4 then
+                        local step = math.min(0.12, deltaTime * 2.5)
+                        moveObjectToward(object, root.Position - offset.Unit * 3.5, step)
+                    end
+                end)
+            end
+        end
+    end)
+end
+
+giftToggle.Activated:Connect(function()
+    pullGifts = not pullGifts
+    giftToggle.Text = pullGifts and "PULL GIFTS: ON" or "PULL GIFTS: OFF"
+    if pullGifts or pullTrees then startItemPull() else stopItemPull() end
+end)
+treeToggle.Activated:Connect(function()
+    pullTrees = not pullTrees
+    treeToggle.Text = pullTrees and "PULL TREES: ON" or "PULL DROPPED TREES: OFF"
+    if pullGifts or pullTrees then startItemPull() else stopItemPull() end
+end)
+stopPullButton.Activated:Connect(stopItemPull)
 
 -- Slightly taller panel; responsive scaling keeps all touch targets visible.
 frame.Size = UDim2.fromOffset(310, 390)
