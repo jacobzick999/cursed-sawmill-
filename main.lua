@@ -113,7 +113,7 @@ dragArea.AutoButtonColor = false
 dragArea.ZIndex = 1
 dragArea.Parent = frame
 
-local titleLabel = makeLabel(frame, "DARK SIDE", UDim2.fromOffset(16, 8), UDim2.fromOffset(190, 26), 18, COLORS.text, true)
+local titleLabel = makeLabel(frame, "🌳 DARK SIDE", UDim2.fromOffset(16, 8), UDim2.fromOffset(190, 26), 18, COLORS.text, true)
 titleLabel.ZIndex = 2
 local subtitleLabel = makeLabel(frame, "SAWMILL CONTROL CENTER", UDim2.fromOffset(17, 34), UDim2.fromOffset(220, 16), 9, COLORS.muted, true)
 subtitleLabel.ZIndex = 2
@@ -148,7 +148,7 @@ scroll.BorderSizePixel = 0
 scroll.ScrollBarThickness = 6
 scroll.ScrollBarImageColor3 = COLORS.accent
 scroll.ScrollingDirection = Enum.ScrollingDirection.Y
-scroll.CanvasSize = UDim2.fromOffset(0, 470)
+scroll.CanvasSize = UDim2.fromOffset(0, 740)
 scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
 scroll.ElasticBehavior = Enum.ElasticBehavior.WhenScrollable
 scroll.Parent = frame
@@ -418,6 +418,135 @@ for _, item in ipairs(moveButtons) do
     local button = makeButton(scroll, item[1], UDim2.fromOffset(item[2], item[3]), UDim2.fromOffset(132, 30))
     button.Activated:Connect(function() move(item[1]) end)
 end
+
+
+-- DARK SIDE TREE TOOLS
+makeLabel(scroll, "🌳 TREE TOOLS", UDim2.fromOffset(16, 462), UDim2.fromOffset(180, 22), 12, COLORS.line, true)
+
+local saveLocationButton = makeButton(scroll, "SAVE CURRENT SPOT", UDim2.fromOffset(14, 488), UDim2.fromOffset(282, 34), COLORS.accent)
+local returnLocationButton = makeButton(scroll, "RETURN TO SAVED SPOT", UDim2.fromOffset(14, 528), UDim2.fromOffset(282, 34))
+local fetchTreesButton = makeButton(scroll, "FETCH TREE TYPES", UDim2.fromOffset(14, 568), UDim2.fromOffset(282, 34), COLORS.accent)
+local equipAxeButton = makeButton(scroll, "AUTO EQUIP AXE", UDim2.fromOffset(14, 608), UDim2.fromOffset(282, 34))
+
+local treeResults = makeLabel(scroll, "Tree types have not been fetched yet.", UDim2.fromOffset(16, 650), UDim2.fromOffset(278, 68), 10, COLORS.muted, false)
+treeResults.TextWrapped = true
+treeResults.TextYAlignment = Enum.TextYAlignment.Top
+
+local savedLocation = nil
+
+local function getRootPart()
+    local character = player.Character
+    if not character then return nil end
+    return character:FindFirstChild("HumanoidRootPart")
+end
+
+saveLocationButton.Activated:Connect(function()
+    local root = getRootPart()
+    if not root then
+        setStatus("Character is not ready; cannot save your spot.")
+        return
+    end
+    savedLocation = root.CFrame
+    setStatus("Your current standing location has been saved.")
+end)
+
+returnLocationButton.Activated:Connect(function()
+    local root = getRootPart()
+    if not root then
+        setStatus("Character is not ready; cannot return.")
+        return
+    end
+    if not savedLocation then
+        setStatus("Tap SAVE CURRENT SPOT first.")
+        return
+    end
+    local ok = pcall(function()
+        local character = player.Character
+        if character then character:PivotTo(savedLocation) end
+    end)
+    setStatus(ok and "Returned locally to your saved spot. Server sync is not guaranteed."
+        or "Could not move your character to the saved spot.")
+end)
+
+fetchTreesButton.Activated:Connect(function()
+    local found = {}
+    local scanned = 0
+    for _, object in ipairs(workspace:GetDescendants()) do
+        if object:IsA("Model") then
+            scanned += 1
+            local lowerName = string.lower(object.Name)
+            local typeValue = object:FindFirstChild("Type")
+            local attributeType = object:GetAttribute("TreeType")
+            local candidate = nil
+
+            if typeof(attributeType) == "string" and attributeType ~= "" then
+                candidate = attributeType
+            elseif typeValue and typeValue:IsA("StringValue") and typeValue.Value ~= "" then
+                if string.find(lowerName, "tree", 1, true)
+                    or string.find(string.lower(typeValue.Value), "tree", 1, true) then
+                    candidate = typeValue.Value
+                end
+            elseif string.find(lowerName, "tree", 1, true) then
+                candidate = object.Name
+            end
+
+            if candidate then
+                found[candidate] = true
+            end
+        end
+    end
+
+    local names = {}
+    for name in pairs(found) do
+        table.insert(names, name)
+    end
+    table.sort(names)
+
+    if #names == 0 then
+        treeResults.Text = "No tree types found in visible Workspace objects. The game may store tree data elsewhere."
+        setStatus("Tree scan finished; no recognizable tree models were found.")
+    else
+        treeResults.Text = "FOUND " .. #names .. " TYPE(S):\n" .. table.concat(names, ", ")
+        setStatus("Tree scan finished. Results are listed below.")
+    end
+    scroll.CanvasSize = UDim2.fromOffset(0, math.max(740, 650 + treeResults.TextBounds.Y + 16))
+end)
+
+equipAxeButton.Activated:Connect(function()
+    local character = player.Character
+    local backpack = player:FindFirstChildOfClass("Backpack")
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then
+        setStatus("Character is not ready; cannot equip an axe.")
+        return
+    end
+
+    local equipped = character:FindFirstChildOfClass("Tool")
+    if equipped and string.find(string.lower(equipped.Name), "axe", 1, true) then
+        setStatus("An axe is already equipped.")
+        return
+    end
+
+    local axe = nil
+    if backpack then
+        for _, item in ipairs(backpack:GetChildren()) do
+            if item:IsA("Tool") and string.find(string.lower(item.Name), "axe", 1, true) then
+                axe = item
+                break
+            end
+        end
+    end
+
+    if not axe then
+        setStatus("No axe tool found in your Backpack.")
+        return
+    end
+
+    local ok = pcall(function()
+        humanoid:EquipTool(axe)
+    end)
+    setStatus(ok and "Equip request sent for " .. axe.Name .. "." or "Could not equip that axe.")
+end)
 
 
 -- Responsive panel sizing and compact minimize mode.
