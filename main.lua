@@ -353,8 +353,9 @@ tornadoStatus.TextWrapped = true
 local tornadoActive = false
 local tornadoConnection = nil
 local tornadoParts = {}
+local tornadoRings = {}
 local tornadoClock = 0
-local tornadoPartCount = 16
+local tornadoPartCount = 48
 local suctionClock = 0
 local SUCTION_RADIUS = 45
 local MAX_SUCTION_ASSEMBLIES = 60
@@ -368,6 +369,10 @@ local function clearTornado()
         if part and part.Parent then part:Destroy() end
     end
     table.clear(tornadoParts)
+    for _, ring in ipairs(tornadoRings) do
+        if ring and ring.Parent then ring:Destroy() end
+    end
+    table.clear(tornadoRings)
     tornadoClock = 0
     suctionClock = 0
 end
@@ -471,7 +476,25 @@ local function startTornado()
 
     tornadoActive = true
     tornadoButton.Text = "STOP TORNADO"
-    tornadoStatus.Text = "Tornado suction MAX: stronger pull, wider radius, and upward spiral for loose collidable objects."
+    tornadoStatus.Text = "ULTIMATE VORTEX: 48 particles, triple spinning rings, and a towering spiral."
+
+    -- Three horizontal neon rings create a layered, expanding vortex base.
+    for ringIndex = 1, 3 do
+        local ring = Instance.new("Part")
+        ring.Name = "DarkSideTornadoRing"
+        ring.Shape = Enum.PartType.Cylinder
+        ring.Size = Vector3.new(0.16, 5 + ringIndex * 2.1, 5 + ringIndex * 2.1)
+        ring.Material = Enum.Material.Neon
+        ring.Color = ringIndex % 2 == 0 and Color3.fromRGB(92, 190, 255) or COLORS.accent
+        ring.Transparency = 0.42 + ringIndex * 0.08
+        ring.Anchored = true
+        ring.CanCollide = false
+        ring.CanTouch = false
+        ring.CanQuery = false
+        ring.CastShadow = false
+        ring.Parent = workspace
+        table.insert(tornadoRings, ring)
+    end
 
     for i = 1, tornadoPartCount do
         local orb = Instance.new("Part")
@@ -505,18 +528,28 @@ local function startTornado()
         for i, orb in ipairs(tornadoParts) do
             if orb and orb.Parent then
                 local fraction = (i - 1) / tornadoPartCount
-                local angle = tornadoClock * 3.2 + fraction * math.pi * 2
-                local height = 1 + fraction * 10
-                local radius = 1.2 + fraction * 2.6
-                local wobble = math.sin(tornadoClock * 4 + i) * 0.25
+                local arm = (i - 1) % 4
+                local angle = tornadoClock * (4.2 + arm * 0.18) + fraction * math.pi * 8 + arm * math.pi * 0.5
+                local height = 0.7 + fraction * 14
+                local radius = 0.9 + fraction * 4.2
+                local wobble = math.sin(tornadoClock * 5 + i) * 0.38
                 local position = center + Vector3.new(
                     math.cos(angle) * (radius + wobble),
                     height,
                     math.sin(angle) * (radius + wobble)
                 )
                 orb.CFrame = CFrame.new(position)
-                local size = 0.45 + fraction * 0.65
+                local size = 0.38 + fraction * 0.8
                 orb.Size = Vector3.new(size, size, size)
+            end
+        end
+
+        for ringIndex, ring in ipairs(tornadoRings) do
+            if ring and ring.Parent then
+                local ringRadius = 4.5 + ringIndex * 1.1 + math.sin(tornadoClock * 2 + ringIndex) * 0.25
+                ring.Size = Vector3.new(0.16, ringRadius * 2, ringRadius * 2)
+                ring.CFrame = CFrame.new(center + Vector3.new(0, 0.45 + ringIndex * 0.5, 0))
+                    * CFrame.Angles(0, tornadoClock * (1.8 + ringIndex * 0.45), math.rad(90))
             end
         end
 
