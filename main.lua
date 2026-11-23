@@ -92,7 +92,7 @@ scroll.BorderSizePixel = 0
 scroll.ScrollBarThickness = 6
 scroll.ScrollBarImageColor3 = COLORS.accent
 scroll.ScrollingDirection = Enum.ScrollingDirection.Y
-scroll.CanvasSize = UDim2.fromOffset(0, 640)
+scroll.CanvasSize = UDim2.fromOffset(0, 650)
 scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
 scroll.ElasticBehavior = Enum.ElasticBehavior.WhenScrollable
 scroll.Parent = frame
@@ -344,14 +344,15 @@ for _, item in ipairs(moveButtons) do
 end
 
 
--- LOCAL-ONLY FLING AURA: cosmetic simulation only.
--- It does not apply physics to other players or server-owned objects.
-makeLabel(scroll, "ULTIMATE FLING (VISUAL TEST)", UDim2.fromOffset(16, 466), UDim2.fromOffset(278, 22), 11, COLORS.accent, true)
-local flingButton = makeButton(scroll, "START FLING EFFECT", UDim2.fromOffset(16, 492), UDim2.fromOffset(278, 36), COLORS.accent)
-local flingStatus = makeLabel(scroll, "Visual-only fling simulation. It cannot move other players or server-owned objects.", UDim2.fromOffset(16, 534), UDim2.fromOffset(278, 36), 9, COLORS.muted, false)
+-- LOCAL LOOSE-OBJECT FLING TEST.
+-- Applies impulses only to nearby unanchored, non-character loose assemblies.
+-- Roblox server ownership may override or reject client-side physics changes.
+makeLabel(scroll, "LOOSE OBJECT FLING TEST", UDim2.fromOffset(16, 466), UDim2.fromOffset(278, 22), 11, COLORS.accent, true)
+local flingButton = makeButton(scroll, "START OBJECT FLING", UDim2.fromOffset(16, 492), UDim2.fromOffset(278, 36), COLORS.accent)
+local flingStatus = makeLabel(scroll, "Targets nearby loose, unanchored objects only. Results depend on network ownership.", UDim2.fromOffset(16, 534), UDim2.fromOffset(278, 36), 9, COLORS.muted, false)
 flingStatus.TextWrapped = true
 
-makeLabel(scroll, "FLING EFFECT POWER (1–100)", UDim2.fromOffset(16, 576), UDim2.fromOffset(190, 20), 10, COLORS.text, true)
+makeLabel(scroll, "FLING POWER (1–100)", UDim2.fromOffset(16, 576), UDim2.fromOffset(190, 20), 10, COLORS.text, true)
 local powerValue = 50
 local powerLabel = makeLabel(scroll, "50", UDim2.fromOffset(252, 576), UDim2.fromOffset(42, 20), 11, COLORS.accent, true)
 powerLabel.TextXAlignment = Enum.TextXAlignment.Right
@@ -398,30 +399,32 @@ end)
 
 local flingActive = false
 local flingConnection = nil
-local flingVisuals = {}
 local flingClock = 0
+local flingCooldowns = {}
+local FLING_RADIUS = 32
+local MAX_ASSEMBLIES_PER_PULSE = 24
 
-local function clearFlingVisuals()
-    if flingConnection then
-        flingConnection:Disconnect()
-        flingConnection = nil
-    end
-    for _, object in ipairs(flingVisuals) do
-        if object and object.Parent then object:Destroy() end
-    end
-    table.clear(flingVisuals)
-    flingClock = 0
+local function isCharacterPart(part)
+    local model = part:FindFirstAncestorOfClass("Model")
+    return model and model:FindFirstChildOfClass("Humanoid") ~= nil
+end
+
+local function isProtectedStructure(part)
+    local folder = workspace:FindFirstChild("PlayerModels")
+    return folder ~= nil and part:IsDescendantOf(folder)
 end
 
 local function stopFling()
     flingActive = false
-    clearFlingVisuals()
-    flingButton.Text = "START FLING EFFECT"
-    flingStatus.Text = "Fling visual stopped. No game objects or players were moved."
+    if flingConnection then
+        flingConnection:Disconnect()
+        flingConnection = nil
+    end
+    flingButton.Text = "START OBJECT FLING"
+    flingStatus.Text = "Stopped. Only loose objects were targeted."
 end
 
 local function startFling()
-    clearFlingVisuals()
     local character = player.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
     if not root then
@@ -430,45 +433,18 @@ local function startFling()
     end
 
     flingActive = true
-    flingButton.Text = "STOP FLING EFFECT"
-    flingStatus.Text = "Visual test running. Power changes the spin speed and effect radius only."
+    flingClock = 0
+    table.clear(flingCooldowns)
+    flingButton.Text = "STOP OBJECT FLING"
+    flingStatus.Text = "Searching within 32 studs for loose objects..."
 
-    -- Cosmetic orbiting streaks; anchored and non-collidable so they cannot affect gameplay.
-    for i = 1, 24 do
-        local orb = Instance.new("Part")
-        orb.Name = "DarkSideFlingVisual"
-        orb.Shape = Enum.PartType.Ball
-        orb.Size = Vector3.new(0.35, 0.35, 0.35)
-        orb.Material = Enum.Material.Neon
-        orb.Color = i % 2 == 0 and COLORS.accent or Color3.fromRGB(92, 190, 255)
-        orb.Transparency = 0.12
-        orb.Anchored = true
-        orb.CanCollide = false
-        orb.CanTouch = false
-        orb.CanQuery = false
-        orb.CastShadow = false
-        orb.Parent = workspace
-        table.insert(flingVisuals, orb)
-    end
-
-    for i = 1, 3 do
-        local ring = Instance.new("Part")
-        ring.Name = "DarkSideFlingRing"
-        ring.Shape = Enum.PartType.Cylinder
-        ring.Size = Vector3.new(0.12, 5 + i * 2, 5 + i * 2)
-        ring.Material = Enum.Material.Neon
-        ring.Color = i % 2 == 0 and Color3.fromRGB(92, 190, 255) or COLORS.accent
-        ring.Transparency = 0.45
-        ring.Anchored = true
-        ring.CanCollide = false
-        ring.CanTouch = false
-        ring.CanQuery = false
-        ring.CastShadow = false
-        ring.Parent = workspace
-        table.insert(flingVisuals, ring)
-    end
+    local overlap = OverlapParams.new()
+    overlap.FilterType = Enum.RaycastFilterType.Exclude
+    overlap.FilterDescendantsInstances = {character}
+    overlap.MaxParts = 500
 
     flingConnection = RunService.Heartbeat:Connect(function(dt)
+        if not flingActive then return end
         local currentCharacter = player.Character
         local currentRoot = currentCharacter and currentCharacter:FindFirstChild("HumanoidRootPart")
         if not currentRoot then
@@ -477,33 +453,61 @@ local function startFling()
         end
 
         flingClock = flingClock + dt
-        local power = powerValue / 100
-        local spinSpeed = 2 + power * 18
-        local radiusBase = 2 + power * 5
+        if flingClock < 0.22 then return end
+        flingClock = 0
+
         local center = currentRoot.Position
+        overlap.FilterDescendantsInstances = {currentCharacter}
+        local ok, nearby = pcall(function()
+            return workspace:GetPartBoundsInRadius(center, FLING_RADIUS, overlap)
+        end)
+        if not ok then
+            flingStatus.Text = "Could not scan nearby objects in this game."
+            return
+        end
 
-        for i = 1, 24 do
-            local orb = flingVisuals[i]
-            if orb and orb.Parent then
-                local angle = flingClock * spinSpeed + (i / 24) * math.pi * 2
-                local height = 0.7 + ((i % 6) / 6) * (1.5 + power * 3)
-                local radius = radiusBase * (0.55 + (i % 4) * 0.18)
-                local position = center + Vector3.new(math.cos(angle) * radius, height, math.sin(angle) * radius)
-                orb.CFrame = CFrame.new(position)
-                local size = 0.25 + power * 0.55
-                orb.Size = Vector3.new(size, size, size)
+        local seen = {}
+        local affected = 0
+        local now = os.clock()
+        local power = powerValue / 100
+
+        for _, part in ipairs(nearby) do
+            if affected >= MAX_ASSEMBLIES_PER_PULSE then break end
+            if part:IsA("BasePart") and not part.Anchored
+                and not isCharacterPart(part) and not isProtectedStructure(part) then
+                local assembly = part.AssemblyRootPart or part
+                if assembly and not assembly.Anchored and not seen[assembly]
+                    and (not flingCooldowns[assembly] or now - flingCooldowns[assembly] >= 0.65) then
+                    seen[assembly] = true
+                    local offset = assembly.Position - center
+                    local distance = offset.Magnitude
+                    if distance > 0.1 and distance <= FLING_RADIUS then
+                        local outward = offset.Unit
+                        local tangent = Vector3.new(-outward.Z, 0, outward.X)
+                        local strength = 18 + power * 92
+                        local velocityKick = outward * strength
+                            + tangent * (strength * 0.45)
+                            + Vector3.new(0, strength * 0.8, 0)
+
+                        local applied = pcall(function()
+                            assembly:ApplyImpulse(velocityKick * assembly.AssemblyMass)
+                            assembly:ApplyAngularImpulse(Vector3.new(
+                                math.random(-1, 1), 1, math.random(-1, 1)
+                            ) * assembly.AssemblyMass * (8 + power * 32))
+                        end)
+
+                        if applied then
+                            flingCooldowns[assembly] = now
+                            affected = affected + 1
+                        end
+                    end
+                end
             end
         end
 
-        for i = 1, 3 do
-            local ring = flingVisuals[24 + i]
-            if ring and ring.Parent then
-                local radius = radiusBase * (0.65 + i * 0.22)
-                ring.Size = Vector3.new(0.12, radius * 2, radius * 2)
-                ring.CFrame = CFrame.new(center + Vector3.new(0, 0.5 + i * 0.35, 0))
-                    * CFrame.Angles(0, -flingClock * (1.5 + power * 8), math.rad(90))
-            end
-        end
+        flingStatus.Text = affected > 0
+            and ("Applied local fling to " .. affected .. " loose object(s).")
+            or "No movable loose objects found nearby. Server ownership may block this."
     end)
 end
 
@@ -544,5 +548,5 @@ gui.Destroying:Connect(function()
     inputConnection:Disconnect()
     if cameraConnection then cameraConnection:Disconnect() end
     highlight:Destroy()
-    clearTornado()
+    stopFling()
 end)
