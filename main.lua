@@ -425,10 +425,10 @@ makeLabel(scroll, "🌳 TREE TOOLS", UDim2.fromOffset(16, 462), UDim2.fromOffset
 
 local saveLocationButton = makeButton(scroll, "SAVE CURRENT SPOT", UDim2.fromOffset(14, 488), UDim2.fromOffset(282, 34), COLORS.accent)
 local returnLocationButton = makeButton(scroll, "RETURN TO SAVED SPOT", UDim2.fromOffset(14, 528), UDim2.fromOffset(282, 34))
-local fetchTreesButton = makeButton(scroll, "FETCH TREE TYPES", UDim2.fromOffset(14, 568), UDim2.fromOffset(282, 34), COLORS.accent)
+local bringTreesButton = makeButton(scroll, "🌳 BRING ALL TREE TYPES", UDim2.fromOffset(14, 568), UDim2.fromOffset(282, 34), COLORS.accent)
 local equipAxeButton = makeButton(scroll, "AUTO EQUIP AXE", UDim2.fromOffset(14, 608), UDim2.fromOffset(282, 34))
 
-local treeResults = makeLabel(scroll, "Tree types have not been fetched yet.", UDim2.fromOffset(16, 650), UDim2.fromOffset(278, 68), 10, COLORS.muted, false)
+local treeResults = makeLabel(scroll, "Press BRING ALL TREE TYPES to request nearby trees.", UDim2.fromOffset(16, 650), UDim2.fromOffset(278, 68), 10, COLORS.muted, false)
 treeResults.TextWrapped = true
 treeResults.TextYAlignment = Enum.TextYAlignment.Top
 
@@ -468,48 +468,16 @@ returnLocationButton.Activated:Connect(function()
         or "Could not move your character to the saved spot.")
 end)
 
-fetchTreesButton.Activated:Connect(function()
-    local found = {}
-    local scanned = 0
-    for _, object in ipairs(workspace:GetDescendants()) do
-        if object:IsA("Model") then
-            scanned += 1
-            local lowerName = string.lower(object.Name)
-            local typeValue = object:FindFirstChild("Type")
-            local attributeType = object:GetAttribute("TreeType")
-            local candidate = nil
-
-            if typeof(attributeType) == "string" and attributeType ~= "" then
-                candidate = attributeType
-            elseif typeValue and typeValue:IsA("StringValue") and typeValue.Value ~= "" then
-                if string.find(lowerName, "tree", 1, true)
-                    or string.find(string.lower(typeValue.Value), "tree", 1, true) then
-                    candidate = typeValue.Value
-                end
-            elseif string.find(lowerName, "tree", 1, true) then
-                candidate = object.Name
-            end
-
-            if candidate then
-                found[candidate] = true
-            end
-        end
+bringTreesButton.Activated:Connect(function()
+    local remote = game:GetService("ReplicatedStorage"):FindFirstChild("BringTreesRequest")
+    if not remote or not remote:IsA("RemoteEvent") then
+        treeResults.Text = "Server feature is not installed yet. Add ServerScriptService/BringTrees.server.lua from this repository."
+        setStatus("Bring Tree needs the server script installed in your own Roblox experience.")
+        return
     end
-
-    local names = {}
-    for name in pairs(found) do
-        table.insert(names, name)
-    end
-    table.sort(names)
-
-    if #names == 0 then
-        treeResults.Text = "No tree types found in visible Workspace objects. The game may store tree data elsewhere."
-        setStatus("Tree scan finished; no recognizable tree models were found.")
-    else
-        treeResults.Text = "FOUND " .. #names .. " TYPE(S):\n" .. table.concat(names, ", ")
-        setStatus("Tree scan finished. Results are listed below.")
-    end
-    scroll.CanvasSize = UDim2.fromOffset(0, math.max(740, 650 + treeResults.TextBounds.Y + 16))
+    treeResults.Text = "Requesting nearby trees of all recognized types..."
+    remote:FireServer()
+    setStatus("Bring Tree request sent to your game's server.")
 end)
 
 equipAxeButton.Activated:Connect(function()
