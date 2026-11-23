@@ -92,7 +92,7 @@ scroll.BorderSizePixel = 0
 scroll.ScrollBarThickness = 6
 scroll.ScrollBarImageColor3 = COLORS.accent
 scroll.ScrollingDirection = Enum.ScrollingDirection.Y
-scroll.CanvasSize = UDim2.fromOffset(0, 1060)
+scroll.CanvasSize = UDim2.fromOffset(0, 1120)
 scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
 scroll.ElasticBehavior = Enum.ElasticBehavior.WhenScrollable
 scroll.Parent = frame
@@ -525,8 +525,11 @@ local dummyButton = makeButton(scroll, "CREATE LOCAL SEAT TEST DUMMY", UDim2.fro
 local removeDummyButton = makeButton(scroll, "REMOVE TEST DUMMY", UDim2.fromOffset(16, 794), UDim2.fromOffset(278, 32), COLORS.panel)
 local dummyStatus = makeLabel(scroll, "A local-only dummy test. It cannot grant server vehicle ownership.", UDim2.fromOffset(16, 830), UDim2.fromOffset(278, 30), 9, COLORS.muted, false)
 dummyStatus.TextWrapped = true
-local visualThrowButton = makeButton(scroll, "VISUAL THROW (OUTSIDE)", UDim2.fromOffset(16, 874), UDim2.fromOffset(278, 36), COLORS.accent)
-local visualThrowStatus = makeLabel(scroll, "Creates a client-only ghost effect. The real truck will not move for other players.", UDim2.fromOffset(16, 914), UDim2.fromOffset(278, 30), 9, COLORS.muted, false)
+local seatScanButton = makeButton(scroll, "FIND NEARBY SEATS", UDim2.fromOffset(16, 866), UDim2.fromOffset(278, 34), COLORS.accent)
+local seatScanStatus = makeLabel(scroll, "Seat scan has not run yet.", UDim2.fromOffset(16, 904), UDim2.fromOffset(278, 34), 9, COLORS.muted, false)
+seatScanStatus.TextWrapped = true
+local visualThrowButton = makeButton(scroll, "VISUAL THROW (OUTSIDE)", UDim2.fromOffset(16, 944), UDim2.fromOffset(278, 36), COLORS.accent)
+local visualThrowStatus = makeLabel(scroll, "Creates a client-only ghost effect. The real truck will not move for other players.", UDim2.fromOffset(16, 984), UDim2.fromOffset(278, 30), 9, COLORS.muted, false)
 visualThrowStatus.TextWrapped = true
 
 local selectedTruck = nil
@@ -612,6 +615,35 @@ end
 
 visualThrowButton.Activated:Connect(playVisualTruckThrow)
 
+seatScanButton.Activated:Connect(function()
+    if not selectedTruck or not selectedTruck.Parent then
+        seatScanStatus.Text = "Select a truck first."
+        return
+    end
+    local origin = selectedTruck:GetPivot().Position
+    local found = {}
+    for _, item in ipairs(workspace:GetDescendants()) do
+        if item:IsA("Seat") or item:IsA("VehicleSeat") then
+            local distance = (item.Position - origin).Magnitude
+            if distance <= 60 then
+                table.insert(found, {seat = item, distance = distance})
+            end
+        end
+    end
+    table.sort(found, function(a, b) return a.distance < b.distance end)
+    if #found == 0 then
+        seatScanStatus.Text = "No Seat/VehicleSeat found within 60 studs of selected truck."
+    else
+        local lines = {}
+        for i = 1, math.min(3, #found) do
+            local item = found[i]
+            table.insert(lines, item.seat.ClassName .. ": " .. item.seat:GetFullName():sub(-55)
+                .. " (" .. math.floor(item.distance) .. " studs)")
+        end
+        seatScanStatus.Text = "Found " .. #found .. " nearby seat(s): " .. table.concat(lines, " | ")
+    end
+end)
+
 local function removeTestDummy()
     if testDummy then
         pcall(function() testDummy:Destroy() end)
@@ -635,10 +667,32 @@ dummyButton.Activated:Connect(function()
         return
     end
 
-    local seat = selectedTruck:FindFirstChildWhichIsA("VehicleSeat", true)
-        or selectedTruck:FindFirstChildWhichIsA("Seat", true)
+    local function findTruckSeat()
+        local bestSeat, bestDistance = nil, math.huge
+        local truckPosition = selectedTruck:GetPivot().Position
+        -- First inspect the selected vehicle model and all nested models.
+        for _, item in ipairs(selectedTruck:GetDescendants()) do
+            if item:IsA("Seat") or item:IsA("VehicleSeat") then
+                local distance = (item.Position - truckPosition).Magnitude
+                if distance < bestDistance then bestSeat, bestDistance = item, distance end
+            end
+        end
+        -- Some games keep the seat in a sibling model rather than inside the truck model.
+        if not bestSeat then
+            for _, item in ipairs(workspace:GetDescendants()) do
+                if (item:IsA("Seat") or item:IsA("VehicleSeat")) and item:IsDescendantOf(workspace) then
+                    local distance = (item.Position - truckPosition).Magnitude
+                    if distance <= 40 and distance < bestDistance then
+                        bestSeat, bestDistance = item, distance
+                    end
+                end
+            end
+        end
+        return bestSeat, bestDistance
+    end
+    local seat = findTruckSeat()
     if not seat then
-        dummyStatus.Text = "No Seat or VehicleSeat found inside this truck."
+        dummyStatus.Text = "No Seat/VehicleSeat found in truck or within 40 studs. Use FIND NEARBY SEATS to inspect."
         return
     end
 
