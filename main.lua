@@ -344,163 +344,101 @@ for _, item in ipairs(moveButtons) do
 end
 
 
--- LOCAL-ONLY tornado visual effect around the player's character.
-makeLabel(scroll, "TORNADO DISTRACTION (VISUAL)", UDim2.fromOffset(16, 466), UDim2.fromOffset(278, 22), 11, COLORS.accent, true)
-local tornadoButton = makeButton(scroll, "START TORNADO", UDim2.fromOffset(16, 492), UDim2.fromOffset(278, 36), COLORS.accent)
-local tornadoStatus = makeLabel(scroll, "Creates a local swirling effect around your character.", UDim2.fromOffset(16, 534), UDim2.fromOffset(278, 34), 9, COLORS.muted, false)
-tornadoStatus.TextWrapped = true
+-- LOCAL-ONLY FLING AURA: cosmetic simulation only.
+-- It does not apply physics to other players or server-owned objects.
+makeLabel(scroll, "ULTIMATE FLING (VISUAL TEST)", UDim2.fromOffset(16, 466), UDim2.fromOffset(278, 22), 11, COLORS.accent, true)
+local flingButton = makeButton(scroll, "START FLING EFFECT", UDim2.fromOffset(16, 492), UDim2.fromOffset(278, 36), COLORS.accent)
+local flingStatus = makeLabel(scroll, "Visual-only fling simulation. It cannot move other players or server-owned objects.", UDim2.fromOffset(16, 534), UDim2.fromOffset(278, 36), 9, COLORS.muted, false)
+flingStatus.TextWrapped = true
 
-local tornadoActive = false
-local tornadoConnection = nil
-local tornadoParts = {}
-local tornadoRings = {}
-local tornadoClock = 0
-local tornadoPartCount = 48
-local suctionClock = 0
-local SUCTION_RADIUS = 80
-local MAX_SUCTION_ASSEMBLIES = 100
+makeLabel(scroll, "FLING EFFECT POWER (1–100)", UDim2.fromOffset(16, 576), UDim2.fromOffset(190, 20), 10, COLORS.text, true)
+local powerValue = 50
+local powerLabel = makeLabel(scroll, "50", UDim2.fromOffset(252, 576), UDim2.fromOffset(42, 20), 11, COLORS.accent, true)
+powerLabel.TextXAlignment = Enum.TextXAlignment.Right
 
-local function clearTornado()
-    if tornadoConnection then
-        tornadoConnection:Disconnect()
-        tornadoConnection = nil
+local powerBar = Instance.new("Frame")
+powerBar.Position = UDim2.fromOffset(16, 602)
+powerBar.Size = UDim2.fromOffset(278, 12)
+powerBar.BackgroundColor3 = COLORS.panel
+powerBar.BorderSizePixel = 0
+powerBar.Parent = scroll
+Instance.new("UICorner", powerBar).CornerRadius = UDim.new(1, 0)
+
+local powerFill = Instance.new("Frame")
+powerFill.Size = UDim2.new(0.5, 0, 1, 0)
+powerFill.BackgroundColor3 = COLORS.accent
+powerFill.BorderSizePixel = 0
+powerFill.Parent = powerBar
+Instance.new("UICorner", powerFill).CornerRadius = UDim.new(1, 0)
+
+local powerTouching = false
+local function setPowerFromX(x)
+    local width = math.max(1, powerBar.AbsoluteSize.X)
+    local fraction = math.clamp((x - powerBar.AbsolutePosition.X) / width, 0, 1)
+    powerValue = math.clamp(math.floor(fraction * 99 + 1.5), 1, 100)
+    powerFill.Size = UDim2.new(powerValue / 100, 0, 1, 0)
+    powerLabel.Text = tostring(powerValue)
+end
+powerBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        powerTouching = true
+        setPowerFromX(input.Position.X)
     end
-    for _, part in ipairs(tornadoParts) do
-        if part and part.Parent then part:Destroy() end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if powerTouching and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+        setPowerFromX(input.Position.X)
     end
-    table.clear(tornadoParts)
-    for _, ring in ipairs(tornadoRings) do
-        if ring and ring.Parent then ring:Destroy() end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        powerTouching = false
     end
-    table.clear(tornadoRings)
-    tornadoClock = 0
-    suctionClock = 0
+end)
+
+local flingActive = false
+local flingConnection = nil
+local flingVisuals = {}
+local flingClock = 0
+
+local function clearFlingVisuals()
+    if flingConnection then
+        flingConnection:Disconnect()
+        flingConnection = nil
+    end
+    for _, object in ipairs(flingVisuals) do
+        if object and object.Parent then object:Destroy() end
+    end
+    table.clear(flingVisuals)
+    flingClock = 0
 end
 
-local function stopTornado()
-    tornadoActive = false
-    clearTornado()
-    tornadoButton.Text = "START TORNADO"
-    tornadoStatus.Text = "Tornado and suction stopped. Object collisions were not changed."
+local function stopFling()
+    flingActive = false
+    clearFlingVisuals()
+    flingButton.Text = "START FLING EFFECT"
+    flingStatus.Text = "Fling visual stopped. No game objects or players were moved."
 end
 
-local function isInsideCharacter(part)
-    for _, otherPlayer in ipairs(Players:GetPlayers()) do
-        local character = otherPlayer.Character
-        if character and part:IsDescendantOf(character) then
-            return true
-        end
-    end
-    return false
-end
-
-local function isStructurePart(part)
-    local current = part
-    while current and current ~= workspace do
-        if current:IsA("Model") then
-            local typeValue = current:FindFirstChild("Type")
-            if typeValue and typeValue:IsA("StringValue") and typeValue.Value == "Structure" then
-                return true
-            end
-            if current:FindFirstChildOfClass("Humanoid") then
-                return true
-            end
-        end
-        current = current.Parent
-    end
-    return false
-end
-
-local function pullLooseObjects(center)
-    local overlap = OverlapParams.new()
-    overlap.FilterType = Enum.RaycastFilterType.Exclude
-    local excluded = {}
-    for _, otherPlayer in ipairs(Players:GetPlayers()) do
-        if otherPlayer.Character then
-            table.insert(excluded, otherPlayer.Character)
-        end
-    end
-    overlap.FilterDescendantsInstances = excluded
-    overlap.MaxParts = 1000
-
-    local nearbyParts = workspace:GetPartBoundsInRadius(center, SUCTION_RADIUS, overlap)
-    local handled = {}
-    local processed = 0
-
-    for _, part in ipairs(nearbyParts) do
-        if processed >= MAX_SUCTION_ASSEMBLIES then break end
-        if part:IsA("BasePart") and part.Parent and not part.Anchored
-            and not isInsideCharacter(part) and not isStructurePart(part) then
-
-            local assembly = part.AssemblyRootPart or part
-            if assembly and assembly.Parent and not assembly.Anchored and not handled[assembly] then
-                handled[assembly] = true
-                local offset = center - assembly.Position
-                local distance = offset.Magnitude
-
-                if distance > 2 and distance <= SUCTION_RADIUS then
-                    local inward = offset.Unit
-                    local tangent = Vector3.new(-inward.Z, 0, inward.X)
-                    if tangent.Magnitude > 0 then tangent = tangent.Unit end
-
-                    -- Apply force only to loose, collidable physics assemblies.
-                    -- CanCollide is deliberately left unchanged.
-                    local mass = assembly.AssemblyMass
-                    if mass > 0 and mass < 100000 then
-                        local distanceFactor = 0.65 + 0.35 * (1 - distance / SUCTION_RADIUS)
-                        local impulse = (
-                            inward * 120
-                            + tangent * 95
-                            + Vector3.new(0, 155, 0)
-                        ) * mass * 0.38 * distanceFactor
-
-                        pcall(function()
-                            assembly:ApplyImpulse(impulse)
-                        end)
-                        processed = processed + 1
-                    end
-                end
-            end
-        end
-    end
-end
-
-local function startTornado()
-    clearTornado()
+local function startFling()
+    clearFlingVisuals()
     local character = player.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
     if not root then
-        tornadoStatus.Text = "Your character is not ready. Try again."
+        flingStatus.Text = "Your character is not ready. Try again."
         return
     end
 
-    tornadoActive = true
-    tornadoButton.Text = "STOP TORNADO"
-    tornadoStatus.Text = "MEGA VORTEX: pulls loose collidable and non-collidable objects within 80 studs; anchored parts and characters are excluded."
+    flingActive = true
+    flingButton.Text = "STOP FLING EFFECT"
+    flingStatus.Text = "Visual test running. Power changes the spin speed and effect radius only."
 
-    -- Three horizontal neon rings create a layered, expanding vortex base.
-    for ringIndex = 1, 3 do
-        local ring = Instance.new("Part")
-        ring.Name = "DarkSideTornadoRing"
-        ring.Shape = Enum.PartType.Cylinder
-        ring.Size = Vector3.new(0.16, 5 + ringIndex * 2.1, 5 + ringIndex * 2.1)
-        ring.Material = Enum.Material.Neon
-        ring.Color = ringIndex % 2 == 0 and Color3.fromRGB(92, 190, 255) or COLORS.accent
-        ring.Transparency = 0.42 + ringIndex * 0.08
-        ring.Anchored = true
-        ring.CanCollide = false
-        ring.CanTouch = false
-        ring.CanQuery = false
-        ring.CastShadow = false
-        ring.Parent = workspace
-        table.insert(tornadoRings, ring)
-    end
-
-    for i = 1, tornadoPartCount do
+    -- Cosmetic orbiting streaks; anchored and non-collidable so they cannot affect gameplay.
+    for i = 1, 24 do
         local orb = Instance.new("Part")
-        orb.Name = "DarkSideTornadoParticle"
+        orb.Name = "DarkSideFlingVisual"
         orb.Shape = Enum.PartType.Ball
-        orb.Size = Vector3.new(0.8, 0.8, 0.8)
+        orb.Size = Vector3.new(0.35, 0.35, 0.35)
         orb.Material = Enum.Material.Neon
         orb.Color = i % 2 == 0 and COLORS.accent or Color3.fromRGB(92, 190, 255)
         orb.Transparency = 0.12
@@ -510,62 +448,70 @@ local function startTornado()
         orb.CanQuery = false
         orb.CastShadow = false
         orb.Parent = workspace
-        table.insert(tornadoParts, orb)
+        table.insert(flingVisuals, orb)
     end
 
-    tornadoConnection = RunService.Heartbeat:Connect(function(deltaTime)
+    for i = 1, 3 do
+        local ring = Instance.new("Part")
+        ring.Name = "DarkSideFlingRing"
+        ring.Shape = Enum.PartType.Cylinder
+        ring.Size = Vector3.new(0.12, 5 + i * 2, 5 + i * 2)
+        ring.Material = Enum.Material.Neon
+        ring.Color = i % 2 == 0 and Color3.fromRGB(92, 190, 255) or COLORS.accent
+        ring.Transparency = 0.45
+        ring.Anchored = true
+        ring.CanCollide = false
+        ring.CanTouch = false
+        ring.CanQuery = false
+        ring.CastShadow = false
+        ring.Parent = workspace
+        table.insert(flingVisuals, ring)
+    end
+
+    flingConnection = RunService.Heartbeat:Connect(function(dt)
         local currentCharacter = player.Character
         local currentRoot = currentCharacter and currentCharacter:FindFirstChild("HumanoidRootPart")
         if not currentRoot then
-            stopTornado()
+            stopFling()
             return
         end
 
-        tornadoClock = tornadoClock + deltaTime
-        suctionClock = suctionClock + deltaTime
+        flingClock = flingClock + dt
+        local power = powerValue / 100
+        local spinSpeed = 2 + power * 18
+        local radiusBase = 2 + power * 5
         local center = currentRoot.Position
 
-        for i, orb in ipairs(tornadoParts) do
+        for i = 1, 24 do
+            local orb = flingVisuals[i]
             if orb and orb.Parent then
-                local fraction = (i - 1) / tornadoPartCount
-                local arm = (i - 1) % 4
-                local angle = tornadoClock * (4.2 + arm * 0.18) + fraction * math.pi * 8 + arm * math.pi * 0.5
-                local height = 0.7 + fraction * 14
-                local radius = 0.9 + fraction * 4.2
-                local wobble = math.sin(tornadoClock * 5 + i) * 0.38
-                local position = center + Vector3.new(
-                    math.cos(angle) * (radius + wobble),
-                    height,
-                    math.sin(angle) * (radius + wobble)
-                )
+                local angle = flingClock * spinSpeed + (i / 24) * math.pi * 2
+                local height = 0.7 + ((i % 6) / 6) * (1.5 + power * 3)
+                local radius = radiusBase * (0.55 + (i % 4) * 0.18)
+                local position = center + Vector3.new(math.cos(angle) * radius, height, math.sin(angle) * radius)
                 orb.CFrame = CFrame.new(position)
-                local size = 0.38 + fraction * 0.8
+                local size = 0.25 + power * 0.55
                 orb.Size = Vector3.new(size, size, size)
             end
         end
 
-        for ringIndex, ring in ipairs(tornadoRings) do
+        for i = 1, 3 do
+            local ring = flingVisuals[24 + i]
             if ring and ring.Parent then
-                local ringRadius = 4.5 + ringIndex * 1.1 + math.sin(tornadoClock * 2 + ringIndex) * 0.25
-                ring.Size = Vector3.new(0.16, ringRadius * 2, ringRadius * 2)
-                ring.CFrame = CFrame.new(center + Vector3.new(0, 0.45 + ringIndex * 0.5, 0))
-                    * CFrame.Angles(0, tornadoClock * (1.8 + ringIndex * 0.45), math.rad(90))
+                local radius = radiusBase * (0.65 + i * 0.22)
+                ring.Size = Vector3.new(0.12, radius * 2, radius * 2)
+                ring.CFrame = CFrame.new(center + Vector3.new(0, 0.5 + i * 0.35, 0))
+                    * CFrame.Angles(0, -flingClock * (1.5 + power * 8), math.rad(90))
             end
-        end
-
-        -- Scan nearby loose objects several times per second; collision properties are not modified.
-        if suctionClock >= 0.08 then
-            suctionClock = 0
-            pullLooseObjects(center)
         end
     end)
 end
 
-tornadoButton.Activated:Connect(function()
-    if tornadoActive then
-        stopTornado()
+flingButton.Activated:Connect(function()
+    if flingActive then
+        stopFling()
     else
-        startTornado()
+        startFling()
     end
 end)
 
