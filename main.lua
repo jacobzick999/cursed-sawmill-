@@ -16,13 +16,13 @@ local oldGui = playerGui:FindFirstChild("DarkSideRotation")
 if oldGui then oldGui:Destroy() end
 
 local COLORS = {
-    bg = Color3.fromRGB(16, 17, 27),
-    panel = Color3.fromRGB(31, 33, 48),
-    line = Color3.fromRGB(91, 78, 135),
-    text = Color3.fromRGB(248, 247, 255),
-    muted = Color3.fromRGB(166, 166, 190),
-    accent = Color3.fromRGB(142, 94, 255),
-    accentDark = Color3.fromRGB(78, 54, 148),
+    bg = Color3.fromRGB(15, 18, 38),
+    panel = Color3.fromRGB(28, 34, 58),
+    line = Color3.fromRGB(75, 218, 230),
+    text = Color3.fromRGB(250, 250, 255),
+    muted = Color3.fromRGB(174, 190, 215),
+    accent = Color3.fromRGB(255, 76, 168),
+    accentDark = Color3.fromRGB(105, 83, 255),
 }
 
 local gui = Instance.new("ScreenGui")
@@ -42,8 +42,9 @@ Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 16)
 
 local frameGradient = Instance.new("UIGradient")
 frameGradient.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(28, 25, 44)),
-    ColorSequenceKeypoint.new(1, COLORS.bg),
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(47, 24, 79)),
+    ColorSequenceKeypoint.new(0.48, Color3.fromRGB(19, 43, 77)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(12, 27, 48)),
 })
 frameGradient.Rotation = 35
 frameGradient.Parent = frame
@@ -91,8 +92,12 @@ local function makeButton(parent, text, pos, size, color)
     outline.Parent = button
     if color == COLORS.accent then
         local gradient = Instance.new("UIGradient")
-        gradient.Color = ColorSequence.new(COLORS.accent, COLORS.accentDark)
-        gradient.Rotation = 0
+        gradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 75, 164)),
+            ColorSequenceKeypoint.new(0.52, Color3.fromRGB(145, 91, 255)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(50, 207, 232)),
+        })
+        gradient.Rotation = 12
         gradient.Parent = button
     end
     return button
@@ -119,6 +124,13 @@ headerAccent.BackgroundColor3 = COLORS.accent
 headerAccent.BorderSizePixel = 0
 headerAccent.ZIndex = 2
 headerAccent.Parent = frame
+local headerGradient = Instance.new("UIGradient")
+headerGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 83, 164)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(158, 102, 255)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(54, 222, 224)),
+})
+headerGradient.Parent = headerAccent
 Instance.new("UICorner", headerAccent).CornerRadius = UDim.new(1, 0)
 
 local minimizeButton = makeButton(frame, "−", UDim2.new(1, -88, 0, 12), UDim2.fromOffset(40, 30), COLORS.accent)
@@ -237,9 +249,9 @@ moveStroke.Parent = moveBox
 
 makeLabel(scroll, "ROTATE", UDim2.fromOffset(16, 198), UDim2.fromOffset(100, 20), 10, COLORS.muted, true)
 local axisColors = {
-    X = Color3.fromRGB(232, 111, 120),
-    Y = Color3.fromRGB(112, 202, 157),
-    Z = Color3.fromRGB(111, 158, 235),
+    X = Color3.fromRGB(255, 105, 157),
+    Y = Color3.fromRGB(180, 255, 112),
+    Z = Color3.fromRGB(77, 218, 255),
 }
 local selectedModel = nil
 local selecting = false
