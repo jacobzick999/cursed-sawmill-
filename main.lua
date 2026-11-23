@@ -355,6 +355,9 @@ local tornadoConnection = nil
 local tornadoParts = {}
 local tornadoClock = 0
 local tornadoPartCount = 16
+local suctionClock = 0
+local SUCTION_RADIUS = 28
+local MAX_SUCTION_ASSEMBLIES = 28
 
 local function clearTornado()
     if tornadoConnection then
@@ -366,13 +369,95 @@ local function clearTornado()
     end
     table.clear(tornadoParts)
     tornadoClock = 0
+    suctionClock = 0
 end
 
 local function stopTornado()
     tornadoActive = false
     clearTornado()
     tornadoButton.Text = "START TORNADO"
-    tornadoStatus.Text = "Tornado effect stopped."
+    tornadoStatus.Text = "Tornado and suction stopped. Object collisions were not changed."
+end
+
+local function isInsideCharacter(part)
+    for _, otherPlayer in ipairs(Players:GetPlayers()) do
+        local character = otherPlayer.Character
+        if character and part:IsDescendantOf(character) then
+            return true
+        end
+    end
+    return false
+end
+
+local function isStructurePart(part)
+    local current = part
+    while current and current ~= workspace do
+        if current:IsA("Model") then
+            local typeValue = current:FindFirstChild("Type")
+            if typeValue and typeValue:IsA("StringValue") and typeValue.Value == "Structure" then
+                return true
+            end
+            if current:FindFirstChildOfClass("Humanoid") then
+                return true
+            end
+        end
+        current = current.Parent
+    end
+    return false
+end
+
+local function pullLooseObjects(center)
+    local overlap = OverlapParams.new()
+    overlap.FilterType = Enum.RaycastFilterType.Exclude
+    local excluded = {}
+    for _, otherPlayer in ipairs(Players:GetPlayers()) do
+        if otherPlayer.Character then
+            table.insert(excluded, otherPlayer.Character)
+        end
+    end
+    overlap.FilterDescendantsInstances = excluded
+    overlap.MaxParts = 180
+
+    local nearbyParts = workspace:GetPartBoundsInRadius(center, SUCTION_RADIUS, overlap)
+    local handled = {}
+    local processed = 0
+
+    for _, part in ipairs(nearbyParts) do
+        if processed >= MAX_SUCTION_ASSEMBLIES then break end
+        if part:IsA("BasePart") and part.Parent and not part.Anchored
+            and part.CanCollide and not isInsideCharacter(part) and not isStructurePart(part) then
+
+            local assembly = part.AssemblyRootPart or part
+            if assembly and assembly.Parent and not assembly.Anchored and not handled[assembly] then
+                handled[assembly] = true
+                local offset = center - assembly.Position
+                local distance = offset.Magnitude
+
+                if distance > 2 and distance <= SUCTION_RADIUS then
+                    local inward = offset.Unit
+                    local tangent = Vector3.new(-inward.Z, 0, inward.X)
+                    if tangent.Magnitude > 0 then tangent = tangent.Unit end
+
+                    -- Apply force only to loose, collidable physics assemblies.
+                    -- CanCollide is deliberately left unchanged.
+                    local mass = assembly.AssemblyMass
+                    if mass > 0 and mass < 100000 then
+                        local distanceFactor = 0.65 + 0.35 * (1 - distance / SUCTION_RADIUS)
+                        local impulse = (
+                            inward * 22
+                            + tangent * 18
+                            + Vector3.new(0, 30, 0)
+                        ) * mass * 0.16 * distanceFactor
+
+                        pcall(function()
+                            assembly:ApplyImpulse(impulse)
+                        end)
+                        processed = processed + 1
+                    end
+                end
+            end
+        end
+    end
 end
 
 local function startTornado()
@@ -386,7 +471,7 @@ local function startTornado()
 
     tornadoActive = true
     tornadoButton.Text = "STOP TORNADO"
-    tornadoStatus.Text = "Tornado swirling around your character (local visual only)."
+    tornadoStatus.Text = "Tornado suction ON: loose collidable objects spiral upward nearby."
 
     for i = 1, tornadoPartCount do
         local orb = Instance.new("Part")
@@ -414,7 +499,9 @@ local function startTornado()
         end
 
         tornadoClock = tornadoClock + deltaTime
+        suctionClock = suctionClock + deltaTime
         local center = currentRoot.Position
+
         for i, orb in ipairs(tornadoParts) do
             if orb and orb.Parent then
                 local fraction = (i - 1) / tornadoPartCount
@@ -431,6 +518,12 @@ local function startTornado()
                 local size = 0.45 + fraction * 0.65
                 orb.Size = Vector3.new(size, size, size)
             end
+        end
+
+        -- Scan and apply suction several times per second instead of every frame.
+        if suctionClock >= 0.16 then
+            suctionClock = 0
+            pullLooseObjects(center)
         end
     end)
 end
