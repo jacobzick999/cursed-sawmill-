@@ -518,8 +518,8 @@ end)
 -- MANUAL VEHICLE PICKUP / THROW TEST.
 -- User taps a vehicle model; client-side impulses may be rejected by server ownership.
 local selectTruckButton = makeButton(scroll, "TAP TO SELECT TRUCK", UDim2.fromOffset(16, 630), UDim2.fromOffset(278, 36), COLORS.accent)
-local truckButton = makeButton(scroll, "LIFT / THROW SELECTED", UDim2.fromOffset(16, 672), UDim2.fromOffset(278, 36), COLORS.panel)
-local truckStatus = makeLabel(scroll, "Tap Select, then tap the truck itself. Works with vehicle models that do not use VehicleSeat too.", UDim2.fromOffset(16, 712), UDim2.fromOffset(278, 38), 9, COLORS.muted, false)
+local truckButton = makeButton(scroll, "CHECK NORMAL VEHICLE CONTROL", UDim2.fromOffset(16, 672), UDim2.fromOffset(278, 36), COLORS.panel)
+local truckStatus = makeLabel(scroll, "Select the truck, sit in its normal driver seat, then check whether the game recognizes you as the driver.", UDim2.fromOffset(16, 712), UDim2.fromOffset(278, 38), 9, COLORS.muted, false)
 truckStatus.TextWrapped = true
 local dummyButton = makeButton(scroll, "CREATE LOCAL SEAT TEST DUMMY", UDim2.fromOffset(16, 754), UDim2.fromOffset(278, 36), COLORS.accent)
 local removeDummyButton = makeButton(scroll, "REMOVE TEST DUMMY", UDim2.fromOffset(16, 794), UDim2.fromOffset(278, 32), COLORS.panel)
@@ -813,80 +813,56 @@ local function stopTruckLift()
         truckConnection:Disconnect()
         truckConnection = nil
     end
-    truckButton.Text = "LIFT / THROW SELECTED"
-    truckStatus.Text = selectedTruck and ("Stopped. Selected: " .. selectedTruck.Name) or "Truck lift stopped."
 end
 
-local function startTruckLift()
+local function checkNormalVehicleControl()
     if not selectedTruck or not selectedTruck.Parent then
         truckStatus.Text = "Select a truck first using TAP TO SELECT TRUCK."
         return
     end
 
-    truckActive = true
-    truckLastPulse = 0
-    truckButton.Text = "STOP TRUCK LIFT"
-    truckStatus.Text = "Applying lift and throw to selected truck..."
+    local character = player.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then
+        truckStatus.Text = "Your character is not ready. Respawn and try again."
+        return
+    end
 
-    truckConnection = RunService.Heartbeat:Connect(function(dt)
-        local ok, err = pcall(function()
-            if not truckActive then return end
-            if not selectedTruck or not selectedTruck.Parent then
-                stopTruckLift()
-                truckStatus.Text = "Selected truck is no longer available."
-                return
-            end
-
-            truckLastPulse = truckLastPulse + dt
-            if truckLastPulse < 0.25 then return end
-            truckLastPulse = 0
-
-            local assemblies = {}
-            local partsFound = 0
-            for _, item in ipairs(selectedTruck:GetDescendants()) do
-                if item:IsA("BasePart") then
-                    partsFound = partsFound + 1
-                    local assembly = item.AssemblyRootPart or item
-                    if assembly and not assembly.Anchored then
-                        assemblies[assembly] = true
-                    end
-                end
-            end
-
-            local appliedCount = 0
-            local power = powerValue / 100
-            for assembly in pairs(assemblies) do
-                local mass = assembly.AssemblyMass
-                if mass > 0 and mass < math.huge then
-                    local impulse = Vector3.new(0, 75 + power * 150, 0)
-                        + (assembly.Position - (player.Character and player.Character:GetPivot().Position or assembly.Position)).Unit
-                        * (25 + power * 90)
-                    local success = pcall(function()
-                        assembly:ApplyImpulse(impulse * mass)
-                        assembly:ApplyAngularImpulse(Vector3.new(0, 1, 0) * mass * (20 + power * 45))
-                    end)
-                    if success then appliedCount = appliedCount + 1 end
-                end
-            end
-
-            truckStatus.Text = "Parts: " .. partsFound .. " | unanchored assemblies: "
-                .. #({}) .. " | impulse attempted: " .. appliedCount
-                .. ". Server ownership may prevent movement."
-        end)
-        if not ok then
-            truckStatus.Text = "Truck test error: " .. tostring(err):sub(1, 110)
-            stopTruckLift()
+    local seatPart = humanoid.SeatPart
+    if seatPart and (seatPart:IsA("VehicleSeat") or seatPart:IsA("Seat"))
+        and seatPart:IsDescendantOf(selectedTruck) then
+        if seatPart:IsA("VehicleSeat") then
+            truckStatus.Text = "SUCCESS: You're seated in this truck's VehicleSeat. Use the game's normal drive controls. No remote bypass or extra physics is used."
+        else
+            truckStatus.Text = "You're seated in a regular Seat, not a VehicleSeat. Find the driver's VehicleSeat and use the game's normal controls."
         end
-    end)
+        return
+    end
+
+    local seats = {}
+    for _, item in ipairs(selectedTruck:GetDescendants()) do
+        if item:IsA("VehicleSeat") or item:IsA("Seat") then
+            table.insert(seats, item)
+        end
+    end
+
+    if #seats == 0 then
+        truckStatus.Text = "No Seat or VehicleSeat exists inside the selected truck model. Use the game's normal enter/drive prompt if it has one."
+        return
+    end
+
+    local vehicleSeatCount = 0
+    for _, seat in ipairs(seats) do
+        if seat:IsA("VehicleSeat") then vehicleSeatCount = vehicleSeatCount + 1 end
+    end
+    if vehicleSeatCount > 0 then
+        truckStatus.Text = "Found " .. vehicleSeatCount .. " VehicleSeat(s). Walk to the driver's seat and use the game's normal Sit/Enter interaction, then tap CHECK again."
+    else
+        truckStatus.Text = "Found " .. #seats .. " regular Seat(s), but no VehicleSeat. Use the game's normal vehicle interaction if available."
+    end
 end
 
-truckButton.Activated:Connect(function()
-    if truckActive then
-        stopTruckLift()
-    else
-        startTruckLift()
-    end
-end)
+truckButton.Activated:Connect(checkNormalVehicleControl)
 
 -- Slightly taller panel; responsive scaling keeps all touch targets visible.
 frame.Size = UDim2.fromOffset(310, 390)
