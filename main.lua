@@ -148,7 +148,7 @@ scroll.BorderSizePixel = 0
 scroll.ScrollBarThickness = 6
 scroll.ScrollBarImageColor3 = COLORS.accent
 scroll.ScrollingDirection = Enum.ScrollingDirection.Y
-scroll.CanvasSize = UDim2.fromOffset(0, 740)
+scroll.CanvasSize = UDim2.fromOffset(0, 780)
 scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
 scroll.ElasticBehavior = Enum.ElasticBehavior.WhenScrollable
 scroll.Parent = frame
@@ -425,10 +425,11 @@ makeLabel(scroll, "🌳 TREE TOOLS", UDim2.fromOffset(16, 462), UDim2.fromOffset
 
 local saveLocationButton = makeButton(scroll, "SAVE CURRENT SPOT", UDim2.fromOffset(14, 488), UDim2.fromOffset(282, 34), COLORS.accent)
 local returnLocationButton = makeButton(scroll, "RETURN TO SAVED SPOT", UDim2.fromOffset(14, 528), UDim2.fromOffset(282, 34))
-local bringTreesButton = makeButton(scroll, "🌳 BRING ALL TREE TYPES", UDim2.fromOffset(14, 568), UDim2.fromOffset(282, 34), COLORS.accent)
-local equipAxeButton = makeButton(scroll, "AUTO EQUIP AXE", UDim2.fromOffset(14, 608), UDim2.fromOffset(282, 34))
+local fetchTreesButton = makeButton(scroll, "FETCH TREE TYPES", UDim2.fromOffset(14, 568), UDim2.fromOffset(282, 34), COLORS.accent)
+local bringTreesButton = makeButton(scroll, "🌳 BRING TREE (SUPPORTED ONLY)", UDim2.fromOffset(14, 608), UDim2.fromOffset(282, 34))
+local equipAxeButton = makeButton(scroll, "AUTO EQUIP AXE", UDim2.fromOffset(14, 648), UDim2.fromOffset(282, 34))
 
-local treeResults = makeLabel(scroll, "Press BRING ALL TREE TYPES to request nearby trees.", UDim2.fromOffset(16, 650), UDim2.fromOffset(278, 68), 10, COLORS.muted, false)
+local treeResults = makeLabel(scroll, "Tree types have not been fetched yet.", UDim2.fromOffset(16, 690), UDim2.fromOffset(278, 68), 10, COLORS.muted, false)
 treeResults.TextWrapped = true
 treeResults.TextYAlignment = Enum.TextYAlignment.Top
 
@@ -468,16 +469,51 @@ returnLocationButton.Activated:Connect(function()
         or "Could not move your character to the saved spot.")
 end)
 
-bringTreesButton.Activated:Connect(function()
-    local remote = game:GetService("ReplicatedStorage"):FindFirstChild("BringTreesRequest")
-    if not remote or not remote:IsA("RemoteEvent") then
-        treeResults.Text = "Server feature is not installed yet. Add ServerScriptService/BringTrees.server.lua from this repository."
-        setStatus("Bring Tree needs the server script installed in your own Roblox experience.")
-        return
+fetchTreesButton.Activated:Connect(function()
+    local found = {}
+    for _, object in ipairs(workspace:GetDescendants()) do
+        if object:IsA("Model") then
+            local lowerName = string.lower(object.Name)
+            local typeValue = object:FindFirstChild("Type")
+            local attributeType = object:GetAttribute("TreeType")
+            local candidate = nil
+
+            if typeof(attributeType) == "string" and attributeType ~= "" then
+                candidate = attributeType
+            elseif typeValue and typeValue:IsA("StringValue") and typeValue.Value ~= "" then
+                if string.find(lowerName, "tree", 1, true)
+                    or string.find(string.lower(typeValue.Value), "tree", 1, true) then
+                    candidate = typeValue.Value
+                end
+            elseif string.find(lowerName, "tree", 1, true) then
+                candidate = object.Name
+            end
+
+            if candidate then
+                found[candidate] = true
+            end
+        end
     end
-    treeResults.Text = "Requesting nearby trees of all recognized types..."
-    remote:FireServer()
-    setStatus("Bring Tree request sent to your game's server.")
+
+    local names = {}
+    for name in pairs(found) do
+        table.insert(names, name)
+    end
+    table.sort(names)
+
+    if #names == 0 then
+        treeResults.Text = "No recognizable tree types found in visible Workspace objects."
+        setStatus("Tree scan finished; no recognizable tree models were found.")
+    else
+        treeResults.Text = "FOUND " .. #names .. " TYPE(S):\\n" .. table.concat(names, ", ")
+        setStatus("Tree scan finished. Results are listed below.")
+    end
+    scroll.CanvasSize = UDim2.fromOffset(0, math.max(780, 690 + treeResults.TextBounds.Y + 16))
+end)
+
+bringTreesButton.Activated:Connect(function()
+    treeResults.Text = "Tree movement is unavailable here. This game must provide an official tree-moving interaction. This button will not bypass server permissions."
+    setStatus("Bring Tree is unavailable unless the game officially supports it.")
 end)
 
 equipAxeButton.Activated:Connect(function()
