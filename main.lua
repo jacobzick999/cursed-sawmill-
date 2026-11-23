@@ -92,7 +92,7 @@ scroll.BorderSizePixel = 0
 scroll.ScrollBarThickness = 6
 scroll.ScrollBarImageColor3 = COLORS.accent
 scroll.ScrollingDirection = Enum.ScrollingDirection.Y
-scroll.CanvasSize = UDim2.fromOffset(0, 650)
+scroll.CanvasSize = UDim2.fromOffset(0, 715)
 scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
 scroll.ElasticBehavior = Enum.ElasticBehavior.WhenScrollable
 scroll.Parent = frame
@@ -514,6 +514,126 @@ flingButton.Activated:Connect(function()
     end
 end)
 
+
+-- LOCAL VEHICLE LIFT / THROW TEST.
+-- Detects nearby vehicle models by VehicleSeat and applies local impulses.
+-- Server ownership may prevent visible movement or replication.
+local truckButton = makeButton(scroll, "LIFT / THROW TRUCKS", UDim2.fromOffset(16, 630), UDim2.fromOffset(278, 36), COLORS.accent)
+local truckStatus = makeLabel(scroll, "Targets nearby vehicles with a VehicleSeat. Client physics access is not guaranteed.", UDim2.fromOffset(16, 670), UDim2.fromOffset(278, 34), 9, COLORS.muted, false)
+truckStatus.TextWrapped = true
+
+local truckActive = false
+local truckConnection = nil
+local truckCooldowns = {}
+local TRUCK_RADIUS = 80
+local MAX_TRUCKS_PER_PULSE = 5
+
+local function stopTruckLift()
+    truckActive = false
+    if truckConnection then
+        truckConnection:Disconnect()
+        truckConnection = nil
+    end
+    truckButton.Text = "LIFT / THROW TRUCKS"
+    truckStatus.Text = "Truck lift stopped."
+end
+
+local function startTruckLift()
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root then
+        truckStatus.Text = "Your character is not ready. Try again."
+        return
+    end
+
+    truckActive = true
+    table.clear(truckCooldowns)
+    truckButton.Text = "STOP TRUCK LIFT"
+    truckStatus.Text = "Scanning for nearby vehicles..."
+
+    local overlap = OverlapParams.new()
+    overlap.FilterType = Enum.RaycastFilterType.Exclude
+    overlap.FilterDescendantsInstances = {character}
+    overlap.MaxParts = 2500
+
+    local elapsed = 0
+    truckConnection = RunService.Heartbeat:Connect(function(dt)
+        if not truckActive then return end
+        elapsed = elapsed + dt
+        if elapsed < 0.2 then return end
+        elapsed = 0
+
+        local currentCharacter = player.Character
+        local currentRoot = currentCharacter and currentCharacter:FindFirstChild("HumanoidRootPart")
+        if not currentRoot then
+            stopTruckLift()
+            return
+        end
+
+        overlap.FilterDescendantsInstances = {currentCharacter}
+        local ok, parts = pcall(function()
+            return workspace:GetPartBoundsInRadius(currentRoot.Position, TRUCK_RADIUS, overlap)
+        end)
+        if not ok then
+            truckStatus.Text = "Could not scan for vehicles."
+            return
+        end
+
+        local vehicles = {}
+        for _, part in ipairs(parts) do
+            if part:IsA("BasePart") then
+                local model = part:FindFirstAncestorOfClass("Model")
+                if model and not vehicles[model] and not model:FindFirstChildOfClass("Humanoid") then
+                    local seat = model:FindFirstChildWhichIsA("VehicleSeat", true)
+                    if seat then
+                        local assembly = seat.AssemblyRootPart or seat
+                        if assembly and not assembly.Anchored then
+                            vehicles[model] = assembly
+                        end
+                    end
+                end
+            end
+        end
+
+        local count = 0
+        local now = os.clock()
+        for model, assembly in pairs(vehicles) do
+            if count >= MAX_TRUCKS_PER_PULSE then break end
+            if assembly.Parent and not assembly.Anchored
+                and (not truckCooldowns[model] or now - truckCooldowns[model] >= 0.35) then
+                local offset = assembly.Position - currentRoot.Position
+                if offset.Magnitude > 0.1 then
+                    local direction = offset.Unit
+                    local power = powerValue / 100
+                    local mass = assembly.AssemblyMass
+                    local lift = Vector3.new(0, 65 + power * 115, 0)
+                    local throw = direction * (25 + power * 75)
+                    local applied = pcall(function()
+                        assembly:ApplyImpulse((lift + throw) * mass)
+                        assembly:ApplyAngularImpulse(Vector3.new(0, 1, 0) * mass * (15 + power * 35))
+                    end)
+                    if applied then
+                        truckCooldowns[model] = now
+                        count = count + 1
+                    end
+                end
+            end
+        end
+
+        truckStatus.Text = count > 0
+            and ("Applied lift/throw impulse to " .. count .. " vehicle(s).")
+            or "No movable vehicles with VehicleSeats detected. Server ownership may block movement."
+    end)
+end
+
+truckButton.Activated:Connect(function()
+    if truckActive then
+        stopTruckLift()
+    else
+        startTruckLift()
+    end
+end)
+
 -- Slightly taller panel; responsive scaling keeps all touch targets visible.
 frame.Size = UDim2.fromOffset(310, 390)
 local function updateScale()
@@ -544,4 +664,5 @@ gui.Destroying:Connect(function()
     if cameraConnection then cameraConnection:Disconnect() end
     highlight:Destroy()
     stopFling()
+    stopTruckLift()
 end)
