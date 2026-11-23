@@ -98,18 +98,34 @@ local function makeButton(parent, text, pos, size, color)
     return button
 end
 
-makeLabel(frame, "DARK SIDE", UDim2.fromOffset(16, 8), UDim2.fromOffset(190, 26), 18, COLORS.text, true)
-makeLabel(frame, "SAWMILL CONTROL CENTER", UDim2.fromOffset(17, 34), UDim2.fromOffset(220, 16), 9, COLORS.muted, true)
+local dragArea = Instance.new("TextButton")
+dragArea.Name = "DragArea"
+dragArea.Position = UDim2.fromOffset(0, 0)
+dragArea.Size = UDim2.fromOffset(205, 60)
+dragArea.BackgroundTransparency = 1
+dragArea.Text = ""
+dragArea.AutoButtonColor = false
+dragArea.ZIndex = 1
+dragArea.Parent = frame
+
+local titleLabel = makeLabel(frame, "DARK SIDE", UDim2.fromOffset(16, 8), UDim2.fromOffset(190, 26), 18, COLORS.text, true)
+titleLabel.ZIndex = 2
+local subtitleLabel = makeLabel(frame, "SAWMILL CONTROL CENTER", UDim2.fromOffset(17, 34), UDim2.fromOffset(220, 16), 9, COLORS.muted, true)
+subtitleLabel.ZIndex = 2
 local headerAccent = Instance.new("Frame")
 headerAccent.Position = UDim2.fromOffset(16, 52)
 headerAccent.Size = UDim2.fromOffset(42, 3)
 headerAccent.BackgroundColor3 = COLORS.accent
 headerAccent.BorderSizePixel = 0
+headerAccent.ZIndex = 2
 headerAccent.Parent = frame
 Instance.new("UICorner", headerAccent).CornerRadius = UDim.new(1, 0)
 
-local dragButton = makeButton(frame, "MOVE", UDim2.new(1, -112, 0, 12), UDim2.fromOffset(56, 30), COLORS.accent)
+local minimizeButton = makeButton(frame, "−", UDim2.new(1, -88, 0, 12), UDim2.fromOffset(40, 30), COLORS.accent)
+minimizeButton.Name = "MinimizeButton"
+minimizeButton.ZIndex = 3
 local closeButton = makeButton(frame, "X", UDim2.new(1, -48, 0, 12), UDim2.fromOffset(34, 30))
+closeButton.ZIndex = 3
 
 local scroll = Instance.new("ScrollingFrame")
 scroll.Name = "ControlsScroll"
@@ -131,7 +147,7 @@ local dragTouch = nil
 local dragStart = nil
 local panelStart = nil
 
-dragButton.InputBegan:Connect(function(input)
+dragArea.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.Touch
         or input.UserInputType == Enum.UserInputType.MouseButton1 then
         dragging = true
@@ -392,15 +408,34 @@ for _, item in ipairs(moveButtons) do
 end
 
 
--- Responsive panel sizing keeps the redesigned controls usable on mobile.
-frame.Size = UDim2.fromOffset(310, 390)
+-- Responsive panel sizing and compact minimize mode.
+local minimized = false
+local FULL_HEIGHT = 390
+local MIN_HEIGHT = 62
+frame.Size = UDim2.fromOffset(310, FULL_HEIGHT)
+
 local function updateScale()
     local camera = workspace.CurrentCamera
     if not camera then return end
     local viewport = camera.ViewportSize
-    scale.Scale = math.min(1, (viewport.X - 20) / 310, (viewport.Y - 24) / 390)
-    frame.Position = UDim2.new(0, 10, 0.5, -195 * scale.Scale)
+    local targetHeight = minimized and MIN_HEIGHT or FULL_HEIGHT
+    scale.Scale = math.min(1, (viewport.X - 20) / 310, (viewport.Y - 24) / targetHeight)
+    frame.Position = UDim2.new(0, math.clamp(frame.Position.X.Offset, 0, math.max(0, viewport.X - 310 * scale.Scale)),
+        0, math.clamp(frame.Position.Y.Offset, 0, math.max(0, viewport.Y - targetHeight * scale.Scale)))
 end
+
+local function setMinimized(value)
+    minimized = value
+    scroll.Visible = not minimized
+    frame.Size = UDim2.fromOffset(310, minimized and MIN_HEIGHT or FULL_HEIGHT)
+    minimizeButton.Text = minimized and "+" or "−"
+    updateScale()
+end
+
+minimizeButton.Activated:Connect(function()
+    setMinimized(not minimized)
+end)
+
 updateScale()
 local cameraConnection
 local function watchCamera()
