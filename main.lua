@@ -92,7 +92,7 @@ scroll.BorderSizePixel = 0
 scroll.ScrollBarThickness = 6
 scroll.ScrollBarImageColor3 = COLORS.accent
 scroll.ScrollingDirection = Enum.ScrollingDirection.Y
-scroll.CanvasSize = UDim2.fromOffset(0, 770)
+scroll.CanvasSize = UDim2.fromOffset(0, 820)
 scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
 scroll.ElasticBehavior = Enum.ElasticBehavior.WhenScrollable
 scroll.Parent = frame
@@ -521,12 +521,91 @@ local selectTruckButton = makeButton(scroll, "TAP TO SELECT TRUCK", UDim2.fromOf
 local truckButton = makeButton(scroll, "LIFT / THROW SELECTED", UDim2.fromOffset(16, 672), UDim2.fromOffset(278, 36), COLORS.panel)
 local truckStatus = makeLabel(scroll, "Tap Select, then tap the truck itself. Works with vehicle models that do not use VehicleSeat too.", UDim2.fromOffset(16, 712), UDim2.fromOffset(278, 38), 9, COLORS.muted, false)
 truckStatus.TextWrapped = true
+local visualThrowButton = makeButton(scroll, "VISUAL THROW (OUTSIDE)", UDim2.fromOffset(16, 754), UDim2.fromOffset(278, 36), COLORS.accent)
+local visualThrowStatus = makeLabel(scroll, "Creates a client-only ghost effect. The real truck will not move for other players.", UDim2.fromOffset(16, 794), UDim2.fromOffset(278, 30), 9, COLORS.muted, false)
+visualThrowStatus.TextWrapped = true
 
 local selectedTruck = nil
 local selectingTruck = false
 local truckActive = false
 local truckConnection = nil
 local truckLastPulse = 0
+
+-- Client-only ghost animation for when the player is standing beside the vehicle.
+-- This intentionally does not apply physics to the real vehicle or affect other players.
+local visualThrowBusy = false
+local function playVisualTruckThrow()
+    if visualThrowBusy then
+        visualThrowStatus.Text = "Visual throw is already playing."
+        return
+    end
+    if not selectedTruck or not selectedTruck.Parent then
+        visualThrowStatus.Text = "Select a truck first."
+        return
+    end
+
+    local ghost
+    local oldArchivable = selectedTruck.Archivable
+    local ok, err = pcall(function()
+        selectedTruck.Archivable = true
+        ghost = selectedTruck:Clone()
+        selectedTruck.Archivable = oldArchivable
+        assert(ghost, "Truck could not be copied")
+        for _, item in ipairs(ghost:GetDescendants()) do
+            if item:IsA("Script") or item:IsA("LocalScript") or item:IsA("ModuleScript") then
+                item:Destroy()
+            elseif item:IsA("BasePart") then
+                item.Anchored = true
+                item.CanCollide = false
+                item.CanTouch = false
+                item.CanQuery = false
+                item.Material = Enum.Material.Neon
+                item.Color = Color3.fromRGB(155, 120, 255)
+                item.Transparency = 0.28
+            end
+        end
+        ghost.Name = "LocalVisualTruckThrow"
+        ghost.Parent = workspace
+    end)
+    selectedTruck.Archivable = oldArchivable
+    if not ok or not ghost then
+        if ghost then ghost:Destroy() end
+        visualThrowStatus.Text = "Could not create the visual copy: " .. tostring(err):sub(1, 65)
+        return
+    end
+
+    visualThrowBusy = true
+    visualThrowStatus.Text = "Playing local visual throw. Other players will not see this."
+    local startPivot = ghost:GetPivot()
+    local startTime = os.clock()
+    local duration = 1.25
+    local outward = startPivot.Position - (player.Character and player.Character:GetPivot().Position or startPivot.Position)
+    outward = Vector3.new(outward.X, 0, outward.Z)
+    if outward.Magnitude < 0.05 then outward = Vector3.new(0, 0, -1) else outward = outward.Unit end
+
+    task.spawn(function()
+        while ghost.Parent and os.clock() - startTime < duration do
+            local alpha = math.clamp((os.clock() - startTime) / duration, 0, 1)
+            local lift = 10 * alpha + 7 * math.sin(alpha * math.pi)
+            local travel = outward * (18 * alpha)
+            local spin = CFrame.Angles(0, math.rad(540 * alpha), math.rad(18 * math.sin(alpha * math.pi)))
+            pcall(function()
+                ghost:PivotTo(CFrame.new(startPivot.Position + Vector3.new(0, lift, 0) + travel) * (startPivot - startPivot.Position) * spin)
+                for _, item in ipairs(ghost:GetDescendants()) do
+                    if item:IsA("BasePart") then
+                        item.Transparency = 0.28 + 0.72 * alpha
+                    end
+                end
+            end)
+            RunService.Heartbeat:Wait()
+        end
+        if ghost then ghost:Destroy() end
+        visualThrowBusy = false
+        visualThrowStatus.Text = "Visual throw finished. This was a local-only effect."
+    end)
+end
+
+visualThrowButton.Activated:Connect(playVisualTruckThrow)
 
 local function findTappedVehicle(position)
     local camera = workspace.CurrentCamera
