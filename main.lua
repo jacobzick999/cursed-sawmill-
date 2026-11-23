@@ -427,9 +427,10 @@ local saveLocationButton = makeButton(scroll, "SAVE CURRENT SPOT", UDim2.fromOff
 local returnLocationButton = makeButton(scroll, "RETURN TO SAVED SPOT", UDim2.fromOffset(14, 528), UDim2.fromOffset(282, 34))
 local fetchTreesButton = makeButton(scroll, "FETCH TREE TYPES", UDim2.fromOffset(14, 568), UDim2.fromOffset(282, 34), COLORS.accent)
 local bringTreesButton = makeButton(scroll, "🌳 BRING TREE (SUPPORTED ONLY)", UDim2.fromOffset(14, 608), UDim2.fromOffset(282, 34))
-local equipAxeButton = makeButton(scroll, "AUTO EQUIP AXE", UDim2.fromOffset(14, 648), UDim2.fromOffset(282, 34))
+local cutTreeButton = makeButton(scroll, "CUT DOWN NEAREST TREE", UDim2.fromOffset(14, 648), UDim2.fromOffset(282, 34), COLORS.accent)
+local equipAxeButton = makeButton(scroll, "AUTO EQUIP AXE", UDim2.fromOffset(14, 688), UDim2.fromOffset(282, 34))
 
-local treeResults = makeLabel(scroll, "Tree types have not been fetched yet.", UDim2.fromOffset(16, 690), UDim2.fromOffset(278, 68), 10, COLORS.muted, false)
+local treeResults = makeLabel(scroll, "Tree types have not been fetched yet.", UDim2.fromOffset(16, 730), UDim2.fromOffset(278, 68), 10, COLORS.muted, false)
 treeResults.TextWrapped = true
 treeResults.TextYAlignment = Enum.TextYAlignment.Top
 
@@ -514,6 +515,60 @@ end)
 bringTreesButton.Activated:Connect(function()
     treeResults.Text = "Tree movement is unavailable here. This game must provide an official tree-moving interaction. This button will not bypass server permissions."
     setStatus("Bring Tree is unavailable unless the game officially supports it.")
+end)
+
+-- Highlights the nearest recognizable tree. Chopping uses the game's normal
+-- axe interaction; this helper does not fire hidden remotes or bypass the server.
+local treeHighlight = Instance.new("Highlight")
+treeHighlight.Name = "DarkSideNearestTree"
+treeHighlight.FillColor = Color3.fromRGB(80, 255, 150)
+treeHighlight.OutlineColor = Color3.fromRGB(180, 255, 210)
+treeHighlight.FillTransparency = 0.78
+treeHighlight.Enabled = false
+treeHighlight.Parent = workspace
+
+local function looksLikeTree(model)
+    if not model or not model:IsA("Model") then return false end
+    local name = string.lower(model.Name)
+    if string.find(name, "tree", 1, true) then return true end
+    local treeType = model:GetAttribute("TreeType")
+    if typeof(treeType) == "string" and treeType ~= "" then return true end
+    local typeValue = model:FindFirstChild("Type")
+    return typeValue and typeValue:IsA("StringValue")
+        and string.find(string.lower(typeValue.Value), "tree", 1, true) ~= nil
+end
+
+cutTreeButton.Activated:Connect(function()
+    local root = getRootPart()
+    if not root then
+        setStatus("Character is not ready; cannot find a nearby tree.")
+        return
+    end
+
+    local nearest, nearestDistance = nil, 35
+    for _, object in ipairs(workspace:GetDescendants()) do
+        if object:IsA("Model") and looksLikeTree(object) then
+            local ok, position = pcall(function() return object:GetPivot().Position end)
+            if ok then
+                local distance = (position - root.Position).Magnitude
+                if distance < nearestDistance then
+                    nearest, nearestDistance = object, distance
+                end
+            end
+        end
+    end
+
+    if not nearest then
+        treeHighlight.Adornee = nil
+        treeHighlight.Enabled = false
+        setStatus("No recognizable tree found within 35 studs.")
+        return
+    end
+
+    treeHighlight.Adornee = nearest
+    treeHighlight.Enabled = true
+    treeResults.Text = "TARGET: " .. nearest.Name .. " (" .. math.floor(nearestDistance) .. " studs). Equip your axe and use the game's normal chop controls."
+    setStatus("Nearest tree highlighted. Chop it using the game's normal axe interaction.")
 end)
 
 equipAxeButton.Activated:Connect(function()
@@ -601,4 +656,5 @@ gui.Destroying:Connect(function()
     inputConnection:Disconnect()
     if cameraConnection then cameraConnection:Disconnect() end
     highlight:Destroy()
+    treeHighlight:Destroy()
 end)
