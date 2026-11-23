@@ -420,6 +420,129 @@ for _, item in ipairs(moveButtons) do
 end
 
 
+-- TREE AUTO-TARGET ASSIST
+-- Scans tree models, equips an axe when available, highlights the nearest
+-- target, and advances when that model is removed. Actual chopping remains
+-- controlled by the game's normal axe interaction.
+local autoTreeButton = makeButton(scroll, "START AUTO TREE ASSIST", UDim2.fromOffset(14, 462), UDim2.fromOffset(282, 36), COLORS.accent)
+local treeStatus = makeLabel(scroll, "OFF  •  Ready to scan for nearby tree types.", UDim2.fromOffset(16, 504), UDim2.fromOffset(278, 42), 10, COLORS.muted, false)
+treeStatus.TextWrapped = true
+treeStatus.TextYAlignment = Enum.TextYAlignment.Top
+scroll.CanvasSize = UDim2.fromOffset(0, 780)
+
+local autoTreeRunning = false
+local currentTreeTarget = nil
+local treeHighlight = Instance.new("Highlight")
+treeHighlight.Name = "DarkSideAutoTreeTarget"
+treeHighlight.FillColor = Color3.fromRGB(90, 255, 160)
+treeHighlight.OutlineColor = Color3.fromRGB(185, 255, 215)
+treeHighlight.FillTransparency = 0.78
+treeHighlight.Enabled = false
+treeHighlight.Parent = workspace
+
+local function isTreeModel(model)
+    if not model or not model:IsA("Model") then return false end
+    if player.Character and model:IsDescendantOf(player.Character) then return false end
+    local lowerName = string.lower(model.Name)
+    if string.find(lowerName, "tree", 1, true) then return true end
+    local treeType = model:GetAttribute("TreeType")
+    if typeof(treeType) == "string" and treeType ~= "" then return true end
+    local typeValue = model:FindFirstChild("Type")
+    return typeValue and typeValue:IsA("StringValue")
+        and string.find(string.lower(typeValue.Value), "tree", 1, true) ~= nil
+end
+
+local function equipAvailableAxe()
+    local character = player.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return false end
+    local held = character:FindFirstChildOfClass("Tool")
+    if held and string.find(string.lower(held.Name), "axe", 1, true) then return true end
+    local backpack = player:FindFirstChildOfClass("Backpack")
+    if not backpack then return false end
+    for _, item in ipairs(backpack:GetChildren()) do
+        if item:IsA("Tool") and string.find(string.lower(item.Name), "axe", 1, true) then
+            local ok = pcall(function() humanoid:EquipTool(item) end)
+            return ok
+        end
+    end
+    return false
+end
+
+local function findNearestTree()
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root then return nil, nil end
+    local best, bestDistance = nil, 80
+    for _, object in ipairs(workspace:GetDescendants()) do
+        if object:IsA("Model") and isTreeModel(object) then
+            local ok, position = pcall(function() return object:GetPivot().Position end)
+            if ok then
+                local distance = (position - root.Position).Magnitude
+                if distance < bestDistance then
+                    best, bestDistance = object, distance
+                end
+            end
+        end
+    end
+    return best, bestDistance
+end
+
+local function stopTreeAssist()
+    autoTreeRunning = false
+    currentTreeTarget = nil
+    treeHighlight.Adornee = nil
+    treeHighlight.Enabled = false
+    autoTreeButton.Text = "START AUTO TREE ASSIST"
+    treeStatus.Text = "OFF  •  Tree scanning stopped."
+end
+
+autoTreeButton.Activated:Connect(function()
+    if autoTreeRunning then
+        stopTreeAssist()
+        return
+    end
+
+    autoTreeRunning = true
+    autoTreeButton.Text = "STOP AUTO TREE ASSIST"
+    treeStatus.Text = "ON  •  Searching for the nearest tree."
+    task.spawn(function()
+        while autoTreeRunning and gui.Parent do
+            local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+            if not root then
+                treeStatus.Text = "Waiting for your character to load..."
+                task.wait(1)
+            else
+                if not currentTreeTarget or not currentTreeTarget:IsDescendantOf(workspace) then
+                    currentTreeTarget = nil
+                    local target, distance = findNearestTree()
+                    if target then
+                        currentTreeTarget = target
+                        treeHighlight.Adornee = target
+                        treeHighlight.Enabled = true
+                        local typeName = target:GetAttribute("TreeType") or target.Name
+                        local hasAxe = equipAvailableAxe()
+                        treeStatus.Text = "TARGET: " .. tostring(typeName) .. "  •  " .. math.floor(distance) .. " studs. " ..
+                            (hasAxe and "Axe equipped." or "No axe found; equip one manually.")
+                    else
+                        treeHighlight.Adornee = nil
+                        treeHighlight.Enabled = false
+                        treeStatus.Text = "No recognizable tree within 80 studs. Scanning..."
+                    end
+                    task.wait(1)
+                else
+                    -- When the game removes the chopped tree, the next scan
+                    -- automatically chooses another nearby tree.
+                    if not currentTreeTarget:IsDescendantOf(workspace) then
+                        currentTreeTarget = nil
+                    end
+                    task.wait(0.5)
+                end
+            end
+        end
+    end)
+end)
+
 -- Responsive panel sizing and compact minimize mode.
 local minimized = false
 local FULL_HEIGHT = 390
@@ -468,5 +591,6 @@ gui.Destroying:Connect(function()
     inputConnection:Disconnect()
     if cameraConnection then cameraConnection:Disconnect() end
     highlight:Destroy()
+    autoTreeRunning = false
     treeHighlight:Destroy()
 end)
