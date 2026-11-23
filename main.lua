@@ -440,16 +440,47 @@ treeHighlight.FillTransparency = 0.78
 treeHighlight.Enabled = false
 treeHighlight.Parent = workspace
 
+local TREE_NAME_HINTS = {
+    "tree", "oak", "elm", "walnut", "cherry", "fir", "pine", "birch",
+    "palm", "lava", "spook", "sinister", "frost", "snow", "koa",
+    "volcano", "cedar", "spruce", "acacia", "phantom", "golden"
+}
+
+local function containsTreeHint(value)
+    if typeof(value) ~= "string" then return false end
+    local lower = string.lower(value)
+    for _, hint in ipairs(TREE_NAME_HINTS) do
+        if string.find(lower, hint, 1, true) then return true end
+    end
+    return false
+end
+
 local function isTreeModel(model)
     if not model or not model:IsA("Model") then return false end
     if player.Character and model:IsDescendantOf(player.Character) then return false end
-    local lowerName = string.lower(model.Name)
-    if string.find(lowerName, "tree", 1, true) then return true end
-    local treeType = model:GetAttribute("TreeType")
-    if typeof(treeType) == "string" and treeType ~= "" then return true end
-    local typeValue = model:FindFirstChild("Type")
-    return typeValue and typeValue:IsA("StringValue")
-        and string.find(string.lower(typeValue.Value), "tree", 1, true) ~= nil
+
+    -- Check model name, common attributes, and common value objects.
+    if containsTreeHint(model.Name) then return #model:GetDescendants() > 0 end
+    for _, attributeName in ipairs({"TreeType", "TreeName", "Species"}) do
+        if containsTreeHint(model:GetAttribute(attributeName)) then return true end
+    end
+    for _, child in ipairs(model:GetChildren()) do
+        if (child:IsA("StringValue") or child:IsA("Configuration")) then
+            if child:IsA("StringValue") and containsTreeHint(child.Value) then return true end
+        end
+    end
+
+    -- Some experiences name the model after the species and put the word
+    -- "tree" only on a nested part/model. Check a small descendant sample.
+    local checked = 0
+    for _, descendant in ipairs(model:GetDescendants()) do
+        checked += 1
+        if descendant:IsA("BasePart") and containsTreeHint(descendant.Name) then
+            return true
+        end
+        if checked >= 40 then break end
+    end
+    return false
 end
 
 local function equipAvailableAxe()
@@ -473,9 +504,11 @@ local function findNearestTree()
     local character = player.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
     if not root then return nil, nil end
-    local best, bestDistance = nil, 80
+    local best, bestDistance = nil, 120
+    local scanned = 0
     for _, object in ipairs(workspace:GetDescendants()) do
         if object:IsA("Model") and isTreeModel(object) then
+            scanned += 1
             local ok, position = pcall(function() return object:GetPivot().Position end)
             if ok then
                 local distance = (position - root.Position).Magnitude
@@ -485,7 +518,7 @@ local function findNearestTree()
             end
         end
     end
-    return best, bestDistance
+    return best, bestDistance, scanned
 end
 
 local function stopTreeAssist()
@@ -515,7 +548,7 @@ autoTreeButton.Activated:Connect(function()
             else
                 if not currentTreeTarget or not currentTreeTarget:IsDescendantOf(workspace) then
                     currentTreeTarget = nil
-                    local target, distance = findNearestTree()
+                    local target, distance, scanned = findNearestTree()
                     if target then
                         currentTreeTarget = target
                         treeHighlight.Adornee = target
@@ -527,7 +560,7 @@ autoTreeButton.Activated:Connect(function()
                     else
                         treeHighlight.Adornee = nil
                         treeHighlight.Enabled = false
-                        treeStatus.Text = "No recognizable tree within 80 studs. Scanning..."
+                        treeStatus.Text = "No tree match found within 120 studs (scanned " .. tostring(scanned or 0) .. " models). Check the game's tree naming."
                     end
                     task.wait(1)
                 else
