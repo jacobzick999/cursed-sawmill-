@@ -1,0 +1,36 @@
+name: Roblox Project Checker
+description: Check Roblox Lua/Luau project files and Rojo project configuration.
+author: jacobzick999
+
+inputs:
+  path:
+    description: Directory to check, relative to the repository root.
+    required: false
+    default: .
+  fail-on-warning:
+    description: Fail the check when warnings are found.
+    required: false
+    default: "false"
+
+outputs:
+  files-checked:
+    description: Number of Lua/Luau files checked.
+    value: ${{ steps.check.outputs.files-checked }}
+  errors:
+    description: Number of errors found.
+    value: ${{ steps.check.outputs.errors }}
+  warnings:
+    description: Number of warnings found.
+    value: ${{ steps.check.outputs.warnings }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check Roblox project
+      id: check
+      shell: bash
+      env:
+        ROBLOX_CHECK_PATH: ${{ inputs.path }}
+        ROBLOX_FAIL_ON_WARNING: ${{ inputs.fail-on-warning }}
+        GITHUB_OUTPUT: ${{ github.output }}
+      run: python3 "${{ github.action_path }}/scripts/check_project.py"
